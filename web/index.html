@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kino Studio</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header>
+      <strong>kino</strong>
+      <select id="examples" title="Load an example"></select>
+      <select id="theme" title="Theme (overrides the script's video { theme })">
+        <option value="">Theme: from script</option>
+      </select>
+      <span class="spacer"></span>
+      <span class="split">
+        <button id="present" title="Fullscreen slides: each click or space plays one transition (f: switch to window)">Present</button>
+        <button id="present-window" title="Slides filling this browser window, without going fullscreen (f: switch to fullscreen)">Window</button>
+      </span>
+      <button id="export-svg" title="Download the current frame as SVG">Frame SVG</button>
+      <button id="export-mp4" class="primary" title="Render the whole video to MP4 in the browser">Export MP4</button>
+    </header>
+    <main>
+      <section class="editor">
+        <textarea id="source" spellcheck="false" autocomplete="off"></textarea>
+        <div id="error" hidden></div>
+      </section>
+      <section class="player">
+        <div id="stage"></div>
+        <div id="subtitle"></div>
+        <div class="controls">
+          <button id="prev" title="Previous step (←)">⏮</button>
+          <button id="play" title="Play/pause (space)">▶</button>
+          <button id="next" title="Next step (→)">⏭</button>
+          <div class="timeline">
+            <input id="scrub" type="range" min="0" max="1000" step="1" value="0" />
+            <div id="markers"></div>
+          </div>
+          <span id="time">0.0 / 0.0s</span>
+          <span id="voice-status" hidden></span>
+          <select id="speed" title="Playback speed">
+            <option value="0.25">0.25×</option>
+            <option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option>
+            <option value="2">2×</option>
+          </select>
+        </div>
+        <ol id="chapters"></ol>
+        <div id="progress" hidden></div>
+      </section>
+    </main>
+    <div id="slides" hidden tabindex="-1">
+      <div id="slide-stage"></div>
+      <div id="slide-counter"></div>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

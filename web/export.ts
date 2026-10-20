@@ -1,0 +1,83 @@
+import { ArrayBufferTarget, Muxer } from 'mp4-muxer';
+import type { Movie } from '../src/index.ts';
+import { embeddedFontStyle } from './fonts.ts';
+
+/** Render every frame deterministically and encode to MP4 with WebCodecs (+ the mixed narration, if any). */
+export async function exportMp4(movie: Movie, onProgress: (done: number, total: number) => void, audio: AudioBuffer | null = null): Promise<Blob> {
+  if (typeof VideoEncoder === 'undefined') throw new Error('WebCodecs is not available in this browser');
+  const { width, height, fps } = movie.video;
+  const w = width & ~1;
+  const h = height & ~1;
+
+  let codec = 'avc1.640028';
+  const support = await VideoEncoder.isConfigSupported({ codec, width: w, height: h });
+  if (!support.supported) codec = 'avc1.42001f';
+
+  if (audio && (typeof AudioEncoder === 'undefined' || !(await AudioEncoder.isConfigSupported({ codec: 'opus', sampleRate: audio.sampleRate, numberOfChannels: 2 })).supported)) {
+    console.warn('Opus encoding not supported here; exporting without narration');
+    audio = null;
+  }
+  const muxer = new Muxer({
+    target: new ArrayBufferTarget(),
+    video: { codec: 'avc', width: w, height: h },
+    audio: audio ? { codec: 'opus', numberOfChannels: 2, sampleRate: audio.sampleRate } : undefined,
+    fastStart: 'in-memory',
+  });
+  let failure: unknown = null;
+  const encoder = new VideoEncoder({
+    output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+    error: (e) => (failure = e),
+  });
+  encoder.configure({ codec, width: w, height: h, bitrate: 8_000_000, framerate: fps });
+
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d')!;
+  const total = Math.ceil((movie.duration / 1000) * fps);
+  const th = movie.video.theme;
+  const fonts = await embeddedFontStyle([th.fontSans, th.fontMono, th.fontCaption]);
+
+  for (let i = 0; i < total; i++) {
+    if (failure) throw failure;
+    const svg = movie.svgAt((i / fps) * 1000, fonts);
+    const img = new Image();
+    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+    img.src = url;
+    await img.decode();
+    ctx.drawImage(img, 0, 0, w, h);
+    URL.revokeObjectURL(url);
+    const frame = new VideoFrame(canvas, { timestamp: (i * 1e6) / fps, duration: 1e6 / fps });
+    encoder.encode(frame, { keyFrame: i % (fps * 2) === 0 });
+    frame.close();
+    // keep the encoder queue bounded
+    while (encoder.encodeQueueSize > 8) await new Promise((r) => setTimeout(r, 1));
+    if (i % 10 === 0) onProgress(i, total);
+  }
+  await encoder.flush();
+  if (failure) throw failure;
+  if (audio) await encodeAudio(audio, muxer);
+  muxer.finalize();
+  onProgress(total, total);
+  return new Blob([muxer.target.buffer], { type: 'video/mp4' });
+}
+
+async function encodeAudio(buf: AudioBuffer, muxer: Muxer<ArrayBufferTarget>) {
+  let failure: unknown = null;
+  const enc = new AudioEncoder({ output: (chunk, meta) => muxer.addAudioChunk(chunk, meta), error: (e) => (failure = e) });
+  enc.configure({ codec: 'opus', sampleRate: buf.sampleRate, numberOfChannels: 2, bitrate: 128_000 });
+  const left = buf.getChannelData(0);
+  const right = buf.numberOfChannels > 1 ? buf.getChannelData(1) : left;
+  const CHUNK = 4800; // 100ms at 48kHz
+  for (let i = 0; i < buf.length; i += CHUNK) {
+    const n = Math.min(CHUNK, buf.length - i);
+    const planes = new Float32Array(n * 2);
+    planes.set(left.subarray(i, i + n), 0);
+    planes.set(right.subarray(i, i + n), n);
+    const data = new AudioData({ format: 'f32-planar', sampleRate: buf.sampleRate, numberOfFrames: n, numberOfChannels: 2, timestamp: (i / buf.sampleRate) * 1e6, data: planes });
+    enc.encode(data);
+    data.close();
+  }
+  await enc.flush();
+  if (failure) throw failure;
+}

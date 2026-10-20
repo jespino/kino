@@ -1,0 +1,85 @@
+// Emoji widget tour: counting, reactions, bursts, flips, and emphasis actions
+// (bounce/shake/pulse/spin/wiggle/tada/jump work on every widget).
+video {
+  size: (1920, 1080), transition: 800ms, hold: 700ms
+  voice: { speaker: Kiki, instruct: joyful }
+}
+
+frame "title" (1500ms, ease-out, hold: 1600ms) {
+  cover: title at center() {
+    eyebrow: "Widgets"
+    text: "Emoji, animated"
+    subtitle: "count them, flip them, burst them"
+    size: 96
+  }
+}
+
+frame "counting" (fade) {
+  say "Emoji are real artwork here, so they scale and move like everything else. Let's count apples."
+  heading: label at (960, 120) { text: "3 + 2 = ?", size: 64, weight: 800, origin: top, font: mono }
+  apples: emoji at (960, 330) { char: "🍎", size: 120, count: 3, origin: top, label: "three apples" }
+  hint: emoji at (960, 760) { char: "🤔", size: 130, origin: top }
+}
+
+step "add two" {
+  say "Add two more."
+  apples.add(2)
+  apples.label = "five apples"
+  heading.text = "3 + 2 = 5"
+  heading.color = good
+then
+  hint.char = "😄"
+  hint.float("💡")
+  hint.tada()
+}
+
+frame "reactions" (fade) {
+  say "Reactions float up, and bursts throw copies out in every direction."
+  post: box at (960, 300) { text: "Shipped the new release", width: 760, height: 120, size: 36, origin: top }
+  ship: emoji at (1250, 330) { char: "🚀", size: 60 }
+  like: emoji at (760, 560) { char: "👍", size: 110, origin: top }
+  heart: emoji at (960, 560) { char: "❤️", size: 110, origin: top }
+  party: emoji at (1160, 560) { char: "🎉", size: 110, origin: top }
+}
+
+step "react" (1200ms) {
+  like.float()
+  like.jump()
+  heart.burst(14)
+  heart.pulse()
+  party.burst(12, "✨")
+  party.wiggle()
+}
+
+frame "transform" (fade) {
+  say "You can rotate them, flip them, and swap one for another."
+  rocket: emoji at (640, 380) { char: "🚀", size: 220, glow: true, label: "rotate" }
+  fish: emoji at (1180, 380) { char: "🐟", size: 220, label: "flip" }
+}
+
+step "spin & flip" (1200ms, ease-in-out) {
+  rocket.rotate = -45
+  fish.flip = true
+then
+  rocket.char = "🛸"
+  rocket.spin()
+  fish.char = "🐠"
+}
+
+frame "emphasis" (fade) {
+  say "And every widget, not just emoji, can bounce, shake, pulse or wiggle for emphasis."
+  arr: array at (960, 330) { values: [3, 1, 4, 1, 5], cell: 96, size: 40, origin: top }
+  bug: emoji at (960, 640) { char: "🐛", size: 120, origin: top }
+}
+
+step "shake the bug" {
+  arr.highlight(1, bad)
+  arr.shake()
+  bug.shake()
+then
+  arr.swap(1, 2)
+  arr.unhighlight()
+  arr.bounce()
+  bug.char = "✅"
+  bug.burst(10, "🎉")
+}

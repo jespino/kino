@@ -1,0 +1,187 @@
+// SIMD with AVX2: ten instructions worth knowing, shown on 256-bit YMM registers.
+// Each YMM register holds 8 float32 lanes; one instruction works on all 8 at once.
+// Lane 0 is drawn on the left (Intel manuals draw it on the right).
+
+video {
+  size: (1920, 1080), fps: 30, transition: 700ms, hold: 900ms
+  voice: { speaker: Marcus }
+}
+
+
+frame "title" (1500ms, ease-out, hold: 1800ms) {
+  cover: title at center() {
+    eyebrow: "Performance engineering"
+    text: "SIMD with AVX2"
+    subtitle: "ten instructions, eight lanes at a time"
+    size: 96
+  }
+}
+frame "intro" (fade, 900ms) {
+  say "SIMD means single instruction, multiple data. With AVX2, one instruction works on eight floats at once. Let's look at ten instructions worth knowing."
+
+  title: label at (60, 50) { text: "SIMD with AVX2", size: 46, weight: 800 }
+  subtitle: label at below(title, 10) { text: "one instruction · eight lanes · 256-bit YMM registers", size: 24, color: muted }
+  counter: label at (1818, 62) { text: "", size: 22, weight: 800, caps: true, spacing: 2, color: caption, origin: top-right }
+
+  asm: code at (60, 210) { title: "x86-64 · AVX2", lang: asm, size: 34, lineNumbers: false, width: 860, code: "; registers are empty" }
+  c: code at below(asm, 16) { title: "C · immintrin.h", lang: c, size: 24, lineNumbers: false, width: 860, code: "#include <immintrin.h>" }
+  formula: label at below(c, 34) { text: "", font: mono, size: 28, color: accent }
+
+  b: array at (60, 700) { label: "memory [rsi] · float b", values: [5], cell: 72, width: 1.35, indices: false }
+  gpr: struct at (380, 726) { fields: { eax: 0 }, size: 24, cellWidth: 300 }
+
+  ymm0: array at (1000, 180) { label: "ymm0", capacity: 8, cell: 72, width: 1.35 }
+  ymm1: array at (1000, 330) { label: "ymm1", capacity: 8, cell: 72, width: 1.35 }
+  ymm2: array at (1000, 480) { label: "ymm2", capacity: 8, cell: 72, width: 1.35 }
+  ymm3: array at (1000, 630) { label: "ymm3", capacity: 8, cell: 72, width: 1.35 }
+  a: array at (1000, 830) { label: "memory [rdi] · float a[8]", values: [1, 7, 3, 9, 2, 8, 4, 6], cell: 72, width: 1.35 }
+}
+
+step "1 · vmovups (load)" {
+  say "First, vmovups loads thirty-two bytes, eight floats, from memory into a YMM register in a single instruction."
+  counter.text = "01 / 10 · load"
+  asm.code = "vmovups  ymm0, [rdi]"
+  c.code = "__m256 va = _mm256_loadu_ps(a);"
+  formula.text = "ymm0[i] = a[i]"
+  a.highlight(all, accent)
+then
+  ymm0.copyFrom(a)
+  a.unhighlight()
+}
+
+step "2 · vbroadcastss" {
+  say "vbroadcastss takes one float and copies it into every lane. It's how you combine a scalar with a whole vector."
+  counter.text = "02 / 10 · broadcast"
+  asm.code = "vbroadcastss  ymm1, [rsi]"
+  c.code = "__m256 vb = _mm256_set1_ps(*b);"
+  formula.text = "ymm1[i] = b"
+  b.highlight(0, accent)
+then
+  ymm1.broadcast(b, 0)
+  b.unhighlight()
+}
+
+step "3 · vaddps" {
+  say "vaddps adds lane by lane: eight additions, one instruction, usually in a single cycle of throughput."
+  counter.text = "03 / 10 · add"
+  asm.code = "vaddps  ymm2, ymm0, ymm1"
+  c.code = "__m256 vs = _mm256_add_ps(va, vb);"
+  formula.text = "ymm2[i] = ymm0[i] + ymm1[i]"
+  ymm0.highlight(all, accent)
+  ymm1.highlight(all, accent2)
+then
+  ymm2.copyFrom(ymm0)
+then
+  ymm2.values = [6, 12, 8, 14, 7, 13, 9, 11]
+  ymm2.highlight(all, good)
+}
+
+step "4 · vmulps" {
+  say "vmulps does the same for multiplication."
+  counter.text = "04 / 10 · multiply"
+  asm.code = "vmulps  ymm2, ymm0, ymm1"
+  c.code = "__m256 vm = _mm256_mul_ps(va, vb);"
+  formula.text = "ymm2[i] = ymm0[i] × ymm1[i]"
+  ymm2.unhighlight()
+then
+  ymm2.values = [5, 35, 15, 45, 10, 40, 20, 30]
+  ymm2.highlight(all, good)
+}
+
+step "5 · vfmadd231ps" {
+  say "Fused multiply add computes a times b plus c with a single rounding. It's the workhorse of matrix multiplication, dot products and neural networks."
+  counter.text = "05 / 10 · fused multiply-add"
+  asm.code = "vfmadd231ps  ymm2, ymm0, ymm1"
+  c.code = "vm = _mm256_fmadd_ps(va, vb, vm);"
+  formula.text = "ymm2[i] = ymm0[i] × ymm1[i] + ymm2[i]"
+  ymm2.unhighlight()
+  ymm2.highlight(all, accent)
+then
+  ymm2.values = [10, 70, 30, 90, 20, 80, 40, 60]
+  ymm2.highlight(all, good)
+}
+
+step "6 · vcmpps" {
+  say "vcmpps compares every lane and produces a mask: all ones where the condition holds, all zeros where it doesn't. Here, which elements of a are greater than five?"
+  counter.text = "06 / 10 · compare"
+  asm.code = "vcmpps  ymm3, ymm0, ymm1, 0x1e    ; GT"
+  c.code = "__m256 mask = _mm256_cmp_ps(va, vb, _CMP_GT_OQ);"
+  formula.text = "ymm3[i] = ymm0[i] > ymm1[i] ? ~0 : 0"
+  ymm0.unhighlight()
+  ymm1.unhighlight()
+  ymm2.unhighlight()
+  ymm3.label = "ymm3 · mask"
+then
+  ymm3.copyFrom(ymm0)
+then
+  ymm3.values = ["00…", "FF…", "00…", "FF…", "00…", "FF…", "00…", "FF…"]
+  ymm3.highlight([1, 3, 5, 7], good)
+  ymm0.highlight([1, 3, 5, 7], good)
+}
+
+step "7 · vmovmskps" {
+  say "vmovmskps squeezes the mask into an ordinary integer, one bit per lane. This is the trick behind fast string search: compare thirty-two bytes, then find the first match with a single bit scan."
+  counter.text = "07 / 10 · mask to bits"
+  asm.code = "vmovmskps  eax, ymm3"
+  c.code = "int bits = _mm256_movemask_ps(mask);"
+  formula.text = "eax bit i = sign bit of ymm3[i]"
+  ymm0.unhighlight()
+  gpr.highlight(eax, accent)
+  gpr.eax = "0b10101010 = 170"
+}
+
+step "8 · vblendvps" {
+  say "vblendvps uses the mask to pick, lane by lane, between two registers. It turns an if-else into branch-free code: no mispredictions."
+  counter.text = "08 / 10 · blend"
+  asm.code = "vblendvps  ymm2, ymm1, ymm0, ymm3"
+  c.code = "__m256 r = _mm256_blendv_ps(vb, va, mask);"
+  formula.text = "ymm2[i] = mask[i] ? ymm0[i] : ymm1[i]"
+  gpr.unhighlight()
+  ymm2.unhighlight()
+then
+  ymm2.gather(ymm1, [0, _, 2, _, 4, _, 6, _])
+  ymm2.gather(ymm0, [_, 1, _, 3, _, 5, _, 7])
+  ymm2.highlight(all, good)
+}
+
+step "9 · vmaxps" {
+  say "That particular blend, take a when it's bigger, else b, is just a maximum. vmaxps does it in one instruction."
+  counter.text = "09 / 10 · max"
+  asm.code = "vmaxps  ymm2, ymm0, ymm1"
+  c.code = "__m256 r = _mm256_max_ps(va, vb);"
+  formula.text = "ymm2[i] = max(ymm0[i], ymm1[i])"
+  ymm3.unhighlight()
+  ymm2.unhighlight()
+then
+  ymm2.values = [5, 7, 5, 9, 5, 8, 5, 6]
+  ymm2.highlight(all, good)
+}
+
+step "10 · vpermps" {
+  say "Finally, vpermps moves lanes around. Each lane of the index register says which source lane to fetch, across the whole 256 bits. Here we reverse the vector."
+  counter.text = "10 / 10 · permute"
+  asm.code = "vpermps  ymm2, ymm3, ymm0"
+  c.code = "__m256 rev = _mm256_permutevar8x32_ps(va, idx);"
+  formula.text = "ymm2[i] = ymm0[ymm3[i]]"
+  ymm2.unhighlight()
+  ymm3.unhighlight()
+  ymm3.label = "ymm3 · indices"
+  ymm3.values = [7, 6, 5, 4, 3, 2, 1, 0]
+  ymm3.highlight(all, accent2)
+then
+  ymm2.gather(ymm0, [7, 6, 5, 4, 3, 2, 1, 0])
+  ymm2.highlight(all, good)
+}
+
+step "store" (hold: 2000ms) {
+  say "And vmovups stores the result back to memory. Eight lanes in, eight lanes out, with no loop in sight."
+  counter.text = "store"
+  asm.code = "vmovups  [rdi], ymm2"
+  c.code = "_mm256_storeu_ps(a, rev);"
+  formula.text = "a[i] = ymm2[i]"
+  ymm3.unhighlight()
+then
+  a.copyFrom(ymm2)
+  a.highlight(all, good)
+  ymm2.unhighlight()
+}

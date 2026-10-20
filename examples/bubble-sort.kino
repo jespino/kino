@@ -1,0 +1,80 @@
+// Bubble sort: pointers move along the array, values swap places.
+video { size: (1280, 720), transition: 500ms, hold: 500ms }
+
+
+frame "title" (1500ms, ease-out, hold: 1800ms) {
+  cover: title at center() {
+    eyebrow: "Algorithms"
+    text: "Bubble sort"
+    subtitle: "compare neighbours, swap, repeat"
+    size: 64
+  }
+}
+frame "setup" (fade) {
+  title: label at (640, 40) { text: "Bubble sort", size: 40, weight: 700, origin: top }
+  src: code at (60, 140) {
+    lang: go
+    size: 22
+    code: `
+      for i := 0; i < n-1; i++ {
+          for j := 0; j < n-1-i; j++ {
+              if a[j] > a[j+1] {
+                  a[j], a[j+1] = a[j+1], a[j]
+              }
+          }
+      }
+    `
+  }
+  a: array at (760, 220) { values: [5, 2, 4, 1], cell: 90, size: 34 }
+  j: pointer { target: a[0], label: "j", side: above }
+  j1: pointer { target: a[1], label: "j+1", side: above, color: info }
+  status: label at below(a, 80) { text: "", size: 26, color: muted }
+}
+
+step "compare 5 > 2" {
+  src.highlight(3)
+  a.highlight([0, 1], accent)
+  status.text = "5 > 2 → swap"
+}
+step "swap" {
+  src.highlight(4)
+  a.swap(0, 1)
+}
+step "compare 5 > 4" {
+  a.unhighlight()
+  j.target = a[1]
+  j1.target = a[2]
+  src.highlight(3)
+  a.highlight([1, 2], accent)
+  status.text = "5 > 4 → swap"
+}
+step "swap" {
+  src.highlight(4)
+  a.swap(1, 2)
+}
+step "compare 5 > 1" {
+  a.unhighlight()
+  j.target = a[2]
+  j1.target = a[3]
+  src.highlight(3)
+  a.highlight([2, 3], accent)
+  status.text = "5 > 1 → swap"
+}
+step "swap" {
+  src.highlight(4)
+  a.swap(2, 3)
+}
+step "5 is in place" {
+  a.unhighlight()
+  a.highlight(3, good)
+  src.highlight(1)
+  status.text = "largest value bubbled to the end"
+}
+step "fast forward" (1200ms, back-out) {
+  a.sort()
+  a.highlight(all, good)
+  remove j, j1
+  src.unhighlight()
+  status.text = "sorted ✓"
+  status.color = good
+}

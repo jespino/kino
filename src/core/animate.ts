@@ -1,0 +1,256 @@
+import { lerpColor } from './color.ts';
+import { center, lerpPath, pathLength, pointAlong, rect, transformPoint } from './geometry.ts';
+import type { Frame } from './render.ts';
+import { nodeBox } from './render.ts';
+import type { RNode } from './widget.ts';
+
+export type TransitionKind = 'morph' | 'fade' | 'cut';
+
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+const COLOR_ATTRS = new Set(['fill', 'stroke', 'stop-color']);
+const NUM = /-?(?:\d+\.?\d*|\.\d+)(?:e-?\d+)?/g;
+
+/** Frame shown while holding (transient nodes are only visible while they appear). */
+export function still(f: Frame): Frame {
+  return { view: f.view, nodes: f.nodes.filter((n) => !n.transient) };
+}
+
+/**
+ * Interpolate two frames. Nodes are matched by key ("magic move"):
+ * matched nodes tween their attributes, new ones play their enter effect,
+ * vanished ones play their exit effect.
+ */
+export function interpolate(A: Frame, B: Frame, p: number, kind: TransitionKind): Frame {
+  const view = rect(lerp(A.view.x, B.view.x, p), lerp(A.view.y, B.view.y, p), lerp(A.view.w, B.view.w, p), lerp(A.view.h, B.view.h, p));
+  const aNodes = A.nodes.filter((n) => !n.transient);
+  if (kind === 'cut') return p < 1 ? { view: A.view, nodes: aNodes } : still(B);
+  if (kind === 'fade') {
+    const out: RNode[] = [];
+    for (const a of aNodes) push(out, effect(a, 'fade', 1 - p));
+    for (const b of B.nodes) if (!b.transient) push(out, effect(b, 'fade', p));
+    return { view, nodes: out };
+  }
+
+  const aMap = new Map(aNodes.map((n) => [n.key, n]));
+  const aTransient = new Set(A.nodes.filter((n) => n.transient).map((n) => n.key));
+  const bKeys = new Set(B.nodes.map((n) => n.key));
+  // exiting nodes are drawn right after the last surviving node that preceded them
+  const exitAfter = new Map<string, RNode[]>();
+  let prev = '';
+  for (const a of aNodes) {
+    if (bKeys.has(a.key)) prev = a.key;
+    else {
+      if (!exitAfter.has(prev)) exitAfter.set(prev, []);
+      exitAfter.get(prev)!.push(a);
+    }
+  }
+
+  const out: RNode[] = [];
+  const flushExits = (k: string) => {
+    for (const a of exitAfter.get(k) ?? []) push(out, effect(a, a.exit ?? 'fade', 1 - p));
+  };
+  flushExits('');
+  for (const b of B.nodes) {
+    const a = aMap.get(b.key);
+    if (b.transient) {
+      // only on the step that creates it
+      if (!aTransient.has(b.key) && p < 1) push(out, effect(b, b.enter ?? 'fade', p));
+      continue;
+    }
+    if (a) {
+      tween(out, a, b, p);
+      flushExits(b.key);
+      continue;
+    }
+    const src = b.origin ? aMap.get(b.origin) : undefined;
+    if (src && src.tag === b.tag) tween(out, { ...src, key: b.key }, b, p);
+    else push(out, effect(b, b.enter ?? 'fade', b.delay ? Math.max(0, Math.min(1, (p - b.delay) / (1 - b.delay))) : p));
+  }
+  return { view, nodes: out };
+}
+
+function push(out: RNode[], n: RNode | null) {
+  if (n) out.push(n);
+}
+
+function tween(out: RNode[], a: RNode, b: RNode, p: number) {
+  if (a.tag !== b.tag) {
+    push(out, effect(a, 'fade', 1 - p));
+    push(out, effect(b, 'fade', p));
+    return;
+  }
+  const attrs: Record<string, string | number> = {};
+  for (const k of new Set([...Object.keys(a.attrs), ...Object.keys(b.attrs)])) {
+    const av = a.attrs[k] ?? (k === 'opacity' ? 1 : undefined);
+    const bv = b.attrs[k] ?? (k === 'opacity' ? 1 : undefined);
+    attrs[k] = mix(k, av, bv, p);
+  }
+  if (a.tag === 'text' && a.text !== b.text) {
+    // crossfade text contents at the interpolated position
+    const op = Number(attrs.opacity ?? 1);
+    // old text leaves during the first half, new text arrives during the second
+    out.push({ ...b, key: b.key + '~old', text: a.text, attrs: { ...attrs, opacity: op * Math.max(0, 1 - p * 2) } });
+    out.push({ ...b, attrs: { ...attrs, opacity: op * Math.max(0, p * 2 - 1) } });
+    return;
+  }
+  const node = { ...b, attrs };
+  out.push(b.action && b.action.id !== a.action?.id ? emphasize(node, b.action, p) : node);
+}
+
+/** Keynote-style "action" animations, played over the transition (start and end at rest). */
+function emphasize(n: RNode, act: NonNullable<RNode['action']>, p: number): RNode {
+  const { cx, cy } = act;
+  const s = Math.sin(p * Math.PI);
+  let t = '';
+  switch (act.name) {
+    case 'bounce':
+      t = `translate(0 ${-Math.abs(Math.sin(p * Math.PI * 2)) * 40 * (1 - p * 0.5)})`;
+      break;
+    case 'jump':
+      t = `translate(0 ${-s * 70})`;
+      break;
+    case 'shake':
+      t = `translate(${Math.sin(p * Math.PI * 8) * 16 * (1 - p)} 0)`;
+      break;
+    case 'pulse':
+      t = `translate(${cx} ${cy}) scale(${1 + s * 0.25}) translate(${-cx} ${-cy})`;
+      break;
+    case 'spin':
+      t = `rotate(${p * 360} ${cx} ${cy})`;
+      break;
+    case 'wiggle':
+      t = `rotate(${Math.sin(p * Math.PI * 6) * 14 * (1 - p)} ${cx} ${cy})`;
+      break;
+    case 'tada': {
+      const sc = 1 + s * 0.18;
+      t = `translate(${cx} ${cy}) scale(${sc}) rotate(${Math.sin(p * Math.PI * 8) * 8 * s}) translate(${-cx} ${-cy})`;
+      break;
+    }
+  }
+  if (!t) return n;
+  return { ...n, attrs: { ...n.attrs, transform: n.attrs.transform ? `${t} ${n.attrs.transform}` : t } };
+}
+
+function mix(k: string, a: string | number | undefined, b: string | number | undefined, p: number): string | number {
+  if (a === undefined) return b!;
+  if (b === undefined) return a;
+  if (typeof a === 'number' && typeof b === 'number') return lerp(a, b, p);
+  const as = String(a), bs = String(b);
+  if (as === bs) return a;
+  if (k === 'd') return lerpPath(as, bs, p) ?? (p < 0.5 ? a : b);
+  if (COLOR_ATTRS.has(k)) return lerpColor(as, bs, p) ?? (p < 0.5 ? a : b);
+  if (!isNaN(+as) && !isNaN(+bs)) return lerp(+as, +bs, p);
+  // strings with the same shape ("translate(1 2) rotate(30)", "6 5", point lists): lerp the numbers
+  const xa = as.match(NUM) ?? [], xb = bs.match(NUM) ?? [];
+  if (xa.length && xa.length === xb.length && as.replace(NUM, '#') === bs.replace(NUM, '#')) {
+    let i = 0;
+    return as.replace(NUM, () => String(+lerp(+xa[i], +xb[i++], p).toFixed(3)));
+  }
+  return p < 0.5 ? a : b;
+}
+
+/** Apply an enter/exit effect; q is visibility from 0 (gone) to 1 (fully shown). */
+export function effect(n: RNode, name: string, q: number): RNode | null {
+  if (q >= 1 && name !== 'ripple' && name !== 'flash' && name !== 'burst' && name !== 'float' && name !== 'pour' && name !== 'swell') return n;
+  const op = Number(n.attrs.opacity ?? 1);
+  const attrs = { ...n.attrs };
+  // pivot in the parent's coordinates (the node may carry its own transform)
+  const pivot = () => {
+    const c = center(nodeBox(n));
+    return transformPoint(n.attrs.transform as string | undefined, c.x, c.y);
+  };
+  const scaleAbout = (s: number) => {
+    const c = pivot();
+    const t = `translate(${c.x} ${c.y}) scale(${s}) translate(${-c.x} ${-c.y})`;
+    attrs.transform = attrs.transform ? `${t} ${attrs.transform}` : t;
+  };
+  const slide = (dx: number, dy: number) => {
+    const t = `translate(${dx * (1 - q)} ${dy * (1 - q)})`;
+    attrs.transform = attrs.transform ? `${t} ${attrs.transform}` : t;
+    attrs.opacity = op * q;
+  };
+  switch (name) {
+    case 'none':
+      return q >= 0.5 ? n : null;
+    case 'pop':
+      attrs.opacity = op * Math.min(1, q * 1.5);
+      scaleAbout(0.3 + 0.7 * q + Math.sin(q * Math.PI) * 0.12);
+      break;
+    case 'slide-up':
+      slide(0, 26);
+      break;
+    case 'slide-down':
+      slide(0, -26);
+      break;
+    case 'slide-left':
+      slide(26, 0);
+      break;
+    case 'slide-right':
+      slide(-26, 0);
+      break;
+    case 'pour': {
+      // a particle rides `track` into a target: it shrinks as it goes and fades on arrival
+      if (!n.track) {
+        attrs.opacity = op * q;
+        break;
+      }
+      const at = pointAlong(n.track, q), end = pointAlong(n.track, 1);
+      const s = 1 - 0.8 * Math.pow(q, 1.6);
+      const t = `translate(${at.x} ${at.y}) scale(${s}) translate(${-end.x} ${-end.y})`;
+      attrs.transform = attrs.transform ? `${t} ${attrs.transform}` : t;
+      attrs.opacity = op * Math.min(1, q * 8) * (q > 0.82 ? Math.max(0, (1 - q) / 0.18) : 1);
+      break;
+    }
+    case 'draw': {
+      if (n.track) {
+        // arrowheads: ride the tip of the line being drawn, turning with it
+        const at = pointAlong(n.track, q), end = pointAlong(n.track, 1);
+        const t = `translate(${at.x - end.x} ${at.y - end.y}) rotate(${at.angle - end.angle} ${end.x} ${end.y})`;
+        attrs.transform = attrs.transform ? `${t} ${attrs.transform}` : t;
+        attrs.opacity = op * Math.min(1, q * 6);
+        break;
+      }
+      if (n.tag !== 'path' && n.tag !== 'line') {
+        attrs.opacity = op * q;
+        break;
+      }
+      const len = n.tag === 'line'
+        ? Math.hypot(Number(attrs.x2) - Number(attrs.x1), Number(attrs.y2) - Number(attrs.y1))
+        : pathLength(String(attrs.d));
+      attrs['stroke-dasharray'] = `${len} ${len}`;
+      attrs['stroke-dashoffset'] = len * (1 - q);
+      if (attrs.fill && attrs.fill !== 'none') attrs['fill-opacity'] = q;
+      break;
+    }
+    case 'swell':
+      // a ring that grows out of its shape's outline and fades
+      attrs.opacity = op * (1 - q);
+      scaleAbout(1 + q * 0.35);
+      break;
+    case 'ripple':
+      attrs.opacity = op * (1 - q);
+      scaleAbout(0.2 + q * 1.3);
+      break;
+    case 'flash':
+      attrs.opacity = op * Math.sin(q * Math.PI);
+      break;
+    case 'burst':
+    case 'float': {
+      // particles: travel along `fly`, shrink and fade out (burst falls a little)
+      const [dx, dy] = n.fly ?? [0, -80];
+      const e = 1 - Math.pow(1 - q, 3);
+      const fall = name === 'burst' ? q * q * 60 : 0;
+      const c = pivot();
+      const sc = name === 'burst' ? 1 - q * 0.5 : 0.7 + Math.sin(q * Math.PI) * 0.4;
+      const tr = `translate(${dx * e} ${dy * e + fall}) translate(${c.x} ${c.y}) scale(${sc}) translate(${-c.x} ${-c.y})`;
+      attrs.transform = attrs.transform ? `${tr} ${attrs.transform}` : tr;
+      attrs.opacity = op * (q < 0.15 ? q / 0.15 : 1 - Math.pow((q - 0.15) / 0.85, 2));
+      break;
+    }
+    case 'fade':
+    default:
+      attrs.opacity = op * q;
+  }
+  if (Number(attrs.opacity ?? 1) <= 0.001) return null;
+  return { ...n, attrs };
+}

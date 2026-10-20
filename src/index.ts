@@ -1,0 +1,12 @@
+export { compile, Movie, type VideoConfig, type Chapter, type CompileOptions, type NarrationClip, type Beat } from './core/movie.ts';
+export { collectNarration, estimateDuration, spokenText, DEFAULT_TTS_MODEL, DEFAULT_VOICE, type NarrationRequest, type NarrationAudio, type NarrationLookup, type Voice } from './core/narration.ts';
+export { parse } from './dsl/parser.ts';
+export { KinoError } from './dsl/ast.ts';
+export { defineWidget, h, centeredText, midBaseline, glowRect, captionAttrs, captionFont, codeFont, type WidgetDef, type RNode, type RenderCtx, type WidgetCtx, type Props } from './core/widget.ts';
+export { builtinWidgets } from './widgets/index.ts';
+export { themes, type Theme } from './core/theme.ts';
+export { easings } from './core/easing.ts';
+export { frameToSVG } from './core/svg.ts';
+export * as values from './core/values.ts';
+export { extractEmojis, emojiFileNames, type EmojiProvider } from './core/emoji.ts';
+export { extractImages, imageAsset, imageMime, imageSize, type ImageAsset, type ImageProvider } from './core/image.ts';

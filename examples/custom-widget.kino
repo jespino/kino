@@ -1,0 +1,22 @@
+// Uses the custom `gauge` widget from examples/widgets/gauge.ts
+//   npm run render -- examples/custom-widget.kino --widgets examples/widgets/gauge.ts
+video { size: (1280, 720), transition: 800ms, hold: 600ms }
+
+
+frame "title" (1500ms, ease-out, hold: 1800ms) {
+  cover: title at center() {
+    eyebrow: "Extending kino"
+    text: "Custom widgets"
+    subtitle: "a gauge in forty lines of TypeScript"
+    size: 64
+  }
+}
+frame "gauges" (fade) {
+  title: label at (640, 70) { text: "Custom widget: gauge", size: 36, weight: 700, origin: top }
+  cpu: gauge at (260, 230) { value: 10, label: "CPU" }
+  mem: gauge at right-of(cpu, 140) { value: 35, label: "Memory", color: accent2 }
+  disk: gauge at right-of(mem, 140) { value: 60, label: "Disk", color: good }
+}
+step "load" { cpu.value = 72; mem.add(20) }
+step "spike" (back-out) { cpu.value = 95; disk.add(25) }
+step "recover" { cpu.value = 30; disk.value = 64 }

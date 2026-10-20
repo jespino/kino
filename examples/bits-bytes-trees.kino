@@ -1,0 +1,174 @@
+// Bits, bytes & trees: how a float is encoded, how a struct is laid out in
+// memory, and how a binary search tree finds things.
+// Uses: bits, memory, tree, callout, brace, spotlight (+ tabs, code, title).
+
+video {
+  size: (1920, 1080), fps: 30, transition: 800ms, hold: 900ms
+  voice: { speaker: Jasper }
+}
+
+frame "title" (1500ms, ease-out, hold: 1800ms) {
+  cover: title at center() {
+    eyebrow: "Data representation"
+    text: "Bits, bytes & trees"
+    subtitle: "how a float is encoded, how a struct is laid out, and how a tree finds things"
+    size: 96
+  }
+}
+
+// ── chapter 1: a float, bit by bit ─────────────────────────────────────────
+
+frame "a float in bits" (fade) {
+  say "A float is just thirty-two bits. Let's store three point one four."
+  chapters: tabs at (960, 36) { items: ["Bits", "Bytes", "Trees"], origin: top, size: 20 }
+  src: code at (80, 150) { title: "c", lang: c, size: 34, lineNumbers: false, width: 700, code: "float x = 3.14f;" }
+  f: bits at (80, 430) { width: 32, format: float, cell: 40, fontSize: 24, label: "float32 · IEEE-754" }
+}
+
+step "encode" {
+  f.setFloat(3.14)
+}
+
+step "three fields" {
+  say "IEEE seven fifty-four splits them into three fields: one sign bit, eight exponent bits, and twenty-three bits of mantissa."
+  f.group(sign, 31, 31, pink)
+  f.group(exponent, 30, 23, warn)
+  f.group(mantissa, 22, 0, accent)
+}
+
+step "exponent" {
+  say "The exponent is stored with a bias of one hundred twenty-seven. Here it's one hundred twenty-eight, so the number is scaled by two to the first."
+  exp: brace { from: f[30], to: f[23], side: below, label: "128 − 127 = 1  →  × 2¹", color: warn }
+}
+
+step "mantissa" {
+  say "The mantissa is the fraction after an implicit leading one. One point five seven, times two, gives three point one four."
+  remove exp
+  frac: brace { from: f[22], to: f[0], side: below, label: "1.57 (the leading 1 is implicit)", color: accent }
+}
+
+step "negate" {
+  say "Negating the number flips exactly (((one))) bit: the sign."
+  remove frac
+  spot: spotlight { target: f.sign }
+  f.setFloat(-3.14)
+  why: callout { target: f[31], text: "sign = 1  →  negative", side: below, distance: 90, color: pink }
+}
+
+step "shifts" {
+  say "Integers are simpler. Shifting the bits one place left multiplies by two."
+  remove spot, why
+  n: bits at (80, 720) { value: 22, width: 8, cell: 54, fontSize: 28, label: "uint8" }
+then
+  n.shl(1)
+  n.bounce()
+}
+
+// ── chapter 2: a struct, byte by byte ───────────────────────────────────────
+
+frame "a struct in memory" (fade) {
+  say "Now let's put a struct in memory and look at the raw bytes."
+  chapters: tabs at (960, 36) { items: ["Bits", "Bytes", "Trees"], active: 0, origin: top, size: 20 }
+  src: code at (80, 170) {
+    title: "point.c"
+    lang: c
+    size: 30
+    lineNumbers: false
+    width: 760
+    code: `
+      struct point {
+          char  tag;   // 1 byte
+          int   n;     // 4 bytes
+          float x;     // 4 bytes
+      };
+    `
+  }
+  mem: memory at (980, 200) { size: 16, base: 0x7ffc1000, columns: 8, cell: 72, fontSize: 24, label: "stack memory" }
+}
+
+step "tabs" (500ms) {
+  chapters.select(1)
+}
+
+step "tag" {
+  say "The tag is a single byte: the letter A, which is hex forty-one."
+  src.highlight(2)
+  mem.write(0, "A", str)
+  mem.region(tag, 0, 1, pink, "tag")
+}
+
+step "padding" {
+  say "But the int can't start at offset one. It must be aligned to four bytes, so the compiler inserts three bytes of padding."
+  src.highlight(3)
+  mem.region(pad, 1, 3, muted, "padding")
+  spot: spotlight { target: mem.pad }
+}
+
+step "int" {
+  say "The int, two hundred fifty-eight, is stored little-endian: lowest byte first."
+  remove spot
+  mem.write(4, 258, i32)
+  mem.region(n, 4, 4, warn, "int n")
+  le: callout { target: mem[4], text: "258 = 0x00000102\nstored as 02 01 00 00", side: below, distance: 120, mono: true, color: warn }
+}
+
+step "float" {
+  say "And the float from before: the same thirty-two bits, also in reverse byte order."
+  remove le
+  src.highlight(4)
+  mem.write(8, 3.14, f32)
+  mem.region(x, 8, 4, accent, "float x")
+}
+
+step "sizeof" {
+  say "Twelve bytes in total, and a quarter of them are padding. Ordering fields from largest to smallest avoids that waste."
+  src.unhighlight()
+  size: brace { from: mem[0], to: mem[11], side: below, label: "sizeof(struct point) = 12 bytes", color: good, gap: 70 }
+  mem.highlight(1, 3, bad)
+}
+
+// ── chapter 3: binary search trees ──────────────────────────────────────────
+
+frame "binary search tree" (fade) {
+  say "Finally, trees. In a binary search tree, everything on the left is smaller and everything on the right is bigger."
+  chapters: tabs at (960, 36) { items: ["Bits", "Bytes", "Trees"], active: 1, origin: top, size: 20 }
+  t: tree at (960, 200) { values: [50, 30, 70, 20, 40, 60, 80], origin: top, r: 38, size: 28, levelGap: 150, siblingGap: 120 }
+}
+
+step "tabs" (500ms) {
+  chapters.select(2)
+}
+
+step "insert 65" {
+  say "To insert sixty-five we walk down: right of fifty, left of seventy, right of sixty."
+  t.search(65)
+then
+  t.insert(65)
+  t.highlight(65, good)
+}
+
+step "search 40" {
+  say "Searching is the same walk. Finding forty takes three comparisons instead of scanning every node."
+  t.unhighlight()
+  t.search(40)
+  hint: callout { target: t[40], text: "found in 3 steps\nO(log n)", side: left, color: good }
+}
+
+step "delete the root" {
+  say "Deleting the root is trickier. The smallest value on its right side, sixty, moves up to take its place."
+  remove hint
+  t.unhighlight()
+  t.highlight(50, bad)
+  spot: spotlight { target: t[50], padding: 20 }
+then
+  t.delete(50)
+  t.highlight(60, good)
+  spot.target = t[60]
+}
+
+step "done" (hold: 2000ms) {
+  say "Bits, bytes and trees: three ways to look at the same data."
+  remove spot
+  t.unhighlight()
+  t.tada()
+}

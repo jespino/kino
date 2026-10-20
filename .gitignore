@@ -1,0 +1,7 @@
+node_modules/
+dist/
+out/
+tts/.venv/
+tts/.bootstrap/
+.kino-cache/
+__pycache__/

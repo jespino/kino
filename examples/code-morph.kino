@@ -1,0 +1,58 @@
+// Code "magic move": lines are matched by content and slide to their new place.
+video { size: (1280, 720), transition: 900ms, hold: 1500ms }
+
+
+frame "title" (1500ms, ease-out, hold: 1800ms) {
+  cover: title at center() {
+    eyebrow: "Refactoring"
+    text: "Extract a function"
+    subtitle: "same lines, new home"
+    size: 64
+  }
+}
+frame "before" (fade) {
+  heading: label at (80, 60) { text: "Refactor: extract a function", size: 34, weight: 700 }
+  c: code at (80, 140) {
+    title: "main.go"
+    lang: go
+    size: 24
+    width: 860
+    code: `
+      func main() {
+          total := 0
+          for _, n := range nums {
+              total += n
+          }
+          fmt.Println(total)
+      }
+    `
+  }
+}
+
+step "focus on the loop" {
+  c.focus(2, 5)
+}
+
+step "extract sum()" {
+  c.unfocus()
+  c.code = `
+    func sum(nums []int) int {
+        total := 0
+        for _, n := range nums {
+            total += n
+        }
+        return total
+    }
+
+    func main() {
+        fmt.Println(sum(nums))
+    }
+  `
+  c.highlight(1, 7)
+}
+
+step "use it" {
+  c.highlight(10)
+  note: box at (980, 520) { text: "same lines,\nnew home", fill: surface2, stroke: accent, dashed: true }
+  arrowNote: note -> c[10] { curve: 0.3, color: accent }
+}

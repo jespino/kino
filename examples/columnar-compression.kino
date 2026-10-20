@@ -1,0 +1,376 @@
+// Columnar data compression: how VictoriaLogs turns log rows into columns and
+// shrinks every column with the encoding that fits its values, before zstd.
+// Uses: table, array, bits, memory, brace, callout, arrow, tabs, title, emoji, merge.
+
+video {
+  size: (1920, 1080), fps: 30, transition: 800ms, hold: 1000ms
+  theme: sketch
+  voice: { speaker: Jasper }
+}
+
+frame "title" (1500ms, ease-out, hold: 2200ms) {
+  cover: title at center() {
+    text: "Columnar data compression"
+    subtitle: "Jesús Espino · Software Engineer @ VictoriaMetrics"
+    size: 96
+  }
+  // a log and a clamp: squeezing logs
+  logIcon: emoji at (870, 200) { char: "🪵", size: 120, origin: top, rotate: -8 }
+  clamp: emoji at (1050, 200) { char: "🗜️", size: 120, origin: top, rotate: 8 }
+}
+
+// ── rows → columns ──────────────────────────────────────────────────────────
+
+frame "logs are rows" (fade, 900ms) {
+  say "Logs arrive as rows. Every row mixes a timestamp, words, numbers, an IP address and free text."
+  chapters: tabs at (960, 36) {
+    items: ["Columns", "Blocks", "Dictionary", "Integers", "IPv4", "Delta", "zstd"]
+    origin: top, size: 15
+  }
+  logs: table at (960, 230) {
+    origin: top
+    size: 26
+    mono: true
+    panel: "Incoming log rows"
+    columns: ["_time", "level", "status", "duration", "ip", "_msg"]
+    rows: [
+      ["10:00:00", "info", 200, 12, "192.168.1.12", "GET /api/users"],
+      ["10:00:10", "info", 200, 7, "192.168.1.12", "GET /api/users"],
+      ["10:00:20", "warn", 404, 31, "192.168.1.47", "GET /api/user/42"],
+      ["10:00:30", "info", 200, 9, "192.168.1.12", "GET /api/users"],
+      ["10:00:41", "error", 500, 230, "192.168.1.85", "POST /api/orders"],
+      ["10:00:51", "info", 200, 11, "192.168.1.47", "GET /api/users"]
+    ]
+  }
+}
+
+step "mixed types" {
+  say "Stored row by row, neighbouring bytes have nothing in common, so they compress poorly."
+  logs.highlightRow(4, warn)
+  mixed: callout { target: logs[4], text: "time, word, number, IP, text…\nall next to each other", side: below, distance: 120, color: warn }
+  pile: emoji at (110, 800) { char: "🪵", size: 80, count: 3, label: "logs. lots of logs." }
+}
+
+frame "columns" (900ms) {
+  say "VictoriaLogs turns this around: every field is stored as its own column."
+  chapters: tabs at (960, 36) {
+    items: ["Columns", "Blocks", "Dictionary", "Integers", "IPv4", "Delta", "zstd"]
+    origin: top, size: 15
+  }
+  time: array at (110, 250) { label: "_time", direction: vertical, width: 2.2, size: 24, indices: false, values: ["10:00:00", "10:00:10", "10:00:20", "10:00:30", "10:00:41", "10:00:51"] }
+  level: array at right-of(time, 50) { label: "level", direction: vertical, width: 1.5, size: 24, indices: false, values: [info, info, warn, info, error, info] }
+  status: array at right-of(level, 50) { label: "status", direction: vertical, width: 1.3, size: 24, indices: false, values: [200, 200, 404, 200, 500, 200] }
+  duration: array at right-of(status, 50) { label: "duration", direction: vertical, width: 1.6, size: 24, indices: false, values: [12, 7, 31, 9, 230, 11] }
+  ip: array at right-of(duration, 50) { label: "ip", direction: vertical, width: 3.2, size: 24, indices: false, values: ["192.168.1.12", "192.168.1.12", "192.168.1.47", "192.168.1.12", "192.168.1.85", "192.168.1.47"] }
+  msg: array at right-of(ip, 50) { label: "_msg", direction: vertical, width: 4.2, size: 24, indices: false, values: ["GET /api/users", "GET /api/users", "GET /api/user/42", "GET /api/users", "POST /api/orders", "GET /api/users"] }
+  pillars: emoji at (1640, 330) { char: "🏛️", size: 170, origin: top, label: "one column per field" }
+}
+
+step "values look alike" {
+  say "Now similar values sit next to each other. And because a column holds one kind of value, we can pick the best encoding for each column."
+  level.highlight(all, accent)
+  status.highlight(all, accent2)
+  ip.highlight(all, pink)
+}
+
+// ── blocks ──────────────────────────────────────────────────────────────────
+
+frame "blocks" (fade, 900ms) {
+  say "But those columns aren't built over all the logs at once. VictoriaLogs collects the incoming rows into blocks of up to two megabytes."
+  chapters: tabs at (960, 36) {
+    items: ["Columns", "Blocks", "Dictionary", "Integers", "IPv4", "Delta", "zstd"]
+    active: 1, origin: top, size: 15
+  }
+  incoming: array at (110, 250) {
+    label: "incoming log rows"
+    width: 2, size: 22, indices: false, capacity: 12
+    values: ["10:00:00", "10:00:10", "10:00:20", "10:00:30", "10:00:41", "10:00:51", "10:01:00", "10:01:10", "10:01:21", "10:01:30", "10:01:40", "10:01:51"]
+  }
+  b1: array at (110, 520) { label: "block 1 · up to 2 MB", capacity: 6, width: 2, size: 22, indices: false }
+  b2: array at right-of(b1, 50) { label: "block 2 · up to 2 MB", capacity: 6, width: 2, size: 22, indices: false }
+}
+
+step "fill a block" {
+  say "Rows go into the open block until it reaches its size limit."
+  b1.moveFrom(incoming, 6)
+}
+
+step "a full block" {
+  say "Then the block is closed, and from here on everything happens one block at a time: each block gets its own columns, which are encoded and compressed together."
+  b1.highlight(all, good)
+  unit: brace { from: b1[0], to: b1[5], side: below, label: "≤ 2 MB · encoded and compressed together", color: good }
+  box1: emoji at below(unit, 70) { char: "📦", size: 90, origin: top }
+then
+  b2.moveFrom(incoming, 6)
+  // and the stream keeps coming
+  incoming.push("10:02:00", "10:02:10", "10:02:21", "10:02:30")
+}
+
+// ── dictionary ──────────────────────────────────────────────────────────────
+
+frame "dictionary" (900ms) {
+  say "Let's start with the level column. It only ever holds a handful of distinct words."
+  chapters: tabs at (960, 36) {
+    items: ["Columns", "Blocks", "Dictionary", "Integers", "IPv4", "Delta", "zstd"]
+    active: 2, origin: top, size: 15
+  }
+  level: array at (110, 250) { label: "level", direction: vertical, width: 1.5, size: 24, indices: false, values: [info, info, warn, info, error, info] }
+  score: table at (1810, 210) {
+    origin: top-right
+    size: 22
+    mono: true
+    panel: "Bytes per value"
+    columns: ["encoding", "before", "after"]
+    rows: []
+  }
+}
+
+step "distinct values" {
+  say "Here there are just three: info, warn and error."
+  dict: array at (450, 250) { label: "dictionary", width: 1.5, size: 24, capacity: 3 }
+then
+  dict.push(info, warn, error)
+  dict.highlight(all, accent)
+}
+
+step "store indexes" {
+  say "So we store each word once, in a small dictionary, and every row keeps only a one-byte index into it."
+  codes: array at (330, 250) { label: "idx", direction: vertical, width: 0.9, size: 24, indices: false, values: [0, 0, 1, 0, 2, 0] }
+  codes.highlight(all, good)
+  link: codes[4] -> dict[2] { color: good, curve: 0.3 }
+then
+  level.hide()
+  codes.at = (110, 250)
+  rule: callout { target: dict, text: "VictoriaLogs uses a dictionary when\na column has at most 8 distinct values", side: below, distance: 140, color: accent }
+}
+
+step "score dictionary" {
+  say "Five bytes of error become a single byte."
+  score.addRow("dictionary", "\"error\" 5 B", "1 B")
+  score.highlightRow(0, good)
+  book: emoji at (1420, 620) { char: "📖", size: 150, origin: top, label: "each word written once" }
+}
+
+// ── integers ────────────────────────────────────────────────────────────────
+
+frame "integers" (900ms) {
+  say "Next, numbers. Logs carry them as text, but if every value in a column parses as an integer, we store binary integers instead."
+  chapters: tabs at (960, 36) {
+    items: ["Columns", "Blocks", "Dictionary", "Integers", "IPv4", "Delta", "zstd"]
+    active: 3, origin: top, size: 15
+  }
+  duration: array at (110, 250) { label: "duration", direction: vertical, width: 1.6, size: 24, indices: false, values: [12, 7, 31, 9, 230, 11] }
+  status: array at right-of(duration, 50) { label: "status", direction: vertical, width: 1.3, size: 24, indices: false, values: [200, 200, 404, 200, 500, 200] }
+  score: table at (1810, 210) {
+    origin: top-right
+    size: 22
+    mono: true
+    panel: "Bytes per value"
+    columns: ["encoding", "before", "after"]
+    rows: [["dictionary", "\"error\" 5 B", "1 B"]]
+  }
+}
+
+step "pick the width from the max" {
+  say "The width depends on the largest value in the column. The longest duration is two hundred thirty, which fits in eight bits."
+  duration.highlight(4, warn)
+  d8: bits at (500, 260) { value: 230, width: 8, cell: 46, fontSize: 24, label: "max(duration) = 230 → uint8" }
+}
+
+step "uint16" {
+  say "The largest status is five hundred. That needs nine bits, so the status column becomes sixteen-bit integers."
+  duration.unhighlight()
+  status.highlight(4, warn)
+  s16: bits at below(d8, 90) { value: 500, width: 16, cell: 46, fontSize: 24, label: "max(status) = 500 → uint16" }
+  s16.group(used, 8, 0, warn, "9 bits")
+}
+
+step "text vs binary" {
+  say "As text, two hundred thirty takes three bytes. As a uint eight, it takes one."
+  status.unhighlight()
+  txt: memory at below(s16, 110) { size: 3, columns: 3, cell: 70, fontSize: 24, addresses: false, label: "\"230\" as text" }
+  bin: memory at right-of(txt, 80) { size: 1, columns: 1, cell: 70, fontSize: 24, addresses: false, label: "as uint8" }
+then
+  txt.write(0, "230", str)
+  txt.region(t, 0, 3, muted, "3 bytes")
+  bin.write(0, 230, u8)
+  bin.region(b, 0, 1, good, "1 byte")
+  ruler: emoji at (1460, 690) { char: "📏", size: 140, origin: top, rotate: -20, label: "as wide as the biggest value" }
+}
+
+step "score integers" {
+  score.addRow("uint8", "\"230\" 3 B", "1 B")
+  score.addRow("uint16", "\"404\" 3 B", "2 B")
+  score.highlightRow(1, good)
+  score.highlightRow(2, good)
+}
+
+// ── IPv4 ────────────────────────────────────────────────────────────────────
+
+frame "ipv4" (900ms) {
+  say "IP addresses are a special case of the same idea. As text, one IPv4 address takes up to fifteen bytes."
+  chapters: tabs at (960, 36) {
+    items: ["Columns", "Blocks", "Dictionary", "Integers", "IPv4", "Delta", "zstd"]
+    active: 4, origin: top, size: 15
+  }
+  ip: array at (110, 250) { label: "ip", direction: vertical, width: 3.2, size: 24, indices: false, values: ["192.168.1.12", "192.168.1.12", "192.168.1.47", "192.168.1.12", "192.168.1.85", "192.168.1.47"] }
+  text: memory at (480, 260) { size: 12, columns: 12, cell: 50, fontSize: 22, addresses: false, label: "\"192.168.1.12\" as text" }
+  score: table at (1810, 210) {
+    origin: top-right
+    size: 22
+    mono: true
+    panel: "Bytes per value"
+    columns: ["encoding", "before", "after"]
+    rows: [["dictionary", "\"error\" 5 B", "1 B"], ["uint8", "\"230\" 3 B", "1 B"], ["uint16", "\"404\" 3 B", "2 B"]]
+  }
+}
+
+step "as text" {
+  ip.highlight(0, pink)
+  text.write(0, "192.168.1.12", str)
+  textSize: brace { from: text[0], to: text[11], side: below, label: "12 bytes", color: muted }
+}
+
+step "four octets" {
+  say "But an IPv4 address is really just four numbers between zero and two hundred fifty-five."
+  octets: array at (520, 560) { label: "octets", width: 1.3, size: 26, values: [192, 168, 1, 12] }
+  octets.highlight(all, pink)
+}
+
+step "four bytes" {
+  say "Each one fits in a byte, so the whole address becomes a single four-byte value."
+  bin: memory at below(octets, 70) { size: 4, columns: 4, cell: 70, fontSize: 24, addresses: false, endian: big, label: "uint32" }
+then
+  bin.write(0, 0xC0A8010C, u32)
+  bin.region(ip4, 0, 4, good, "4 bytes")
+  hint: callout { target: bin, text: "compact, and range filters\nbecome integer comparisons", side: right, distance: 90, color: good }
+  globe: emoji at (1560, 600) { char: "🌐", size: 150, origin: top }
+}
+
+step "score ipv4" {
+  score.addRow("IPv4", "\"192.168.1.12\" 12 B", "4 B")
+  score.highlightRow(3, good)
+}
+
+// ── delta ───────────────────────────────────────────────────────────────────
+
+frame "delta" (900ms) {
+  say "Now the timestamps. Each one is a big number, but they only ever grow a little from one row to the next."
+  chapters: tabs at (960, 36) {
+    items: ["Columns", "Blocks", "Dictionary", "Integers", "IPv4", "Delta", "zstd"]
+    active: 5, origin: top, size: 15
+  }
+  time: array at (110, 250) { label: "_time · unix seconds (nanoseconds in VictoriaLogs)", width: 2.9, size: 24, values: [1729332000, 1729332010, 1729332020, 1729332030, 1729332041, 1729332051] }
+  clock: emoji at (1600, 250) { char: "⏱️", size: 150, origin: top, label: "tick, tick, tick" }
+}
+
+step "differences" {
+  say "So we keep the first value, and then only the difference from the previous one."
+  delta: array at below(time, 90) { label: "delta = t[i] − t[i−1]", width: 2.9, size: 24, values: [1729332000] }
+  delta.highlight(0, muted)
+then
+  delta.push(10, 10, 10, 11, 10)
+  delta.highlight([1, 2, 3, 4, 5], accent)
+  why: brace { from: delta[1], to: delta[5], side: below, label: "small numbers: 1 byte each as varints", color: accent }
+  clock.label = "small steps every time"
+  clock.pulse()
+}
+
+step "score delta" {
+  say "Eight bytes per timestamp become about one."
+  score: table at (1810, 640) {
+    origin: top-right
+    size: 18
+    mono: true
+    panel: "Bytes per value"
+    columns: ["encoding", "before", "after"]
+    rows: [["dictionary", "\"error\" 5 B", "1 B"], ["uint8", "\"230\" 3 B", "1 B"], ["uint16", "\"404\" 3 B", "2 B"], ["IPv4", "\"192.168.1.12\" 12 B", "4 B"]]
+  }
+then
+  score.addRow("delta", "int64 8 B", "≈ 1 B")
+  score.highlightRow(4, good)
+}
+
+// ── zstd ────────────────────────────────────────────────────────────────────
+
+frame "zstd" (900ms) {
+  say "And the message? It's free text, so there's no type-specific trick for it. It isn't re-encoded at all."
+  chapters: tabs at (960, 36) {
+    items: ["Columns", "Blocks", "Dictionary", "Integers", "IPv4", "Delta", "zstd"]
+    active: 6, origin: top, size: 15
+  }
+  msg: array at (110, 250) { label: "_msg", direction: vertical, width: 4.2, size: 24, indices: false, values: ["GET /api/users", "GET /api/users", "GET /api/user/42", "GET /api/users", "POST /api/orders", "GET /api/users"] }
+}
+
+step "stored as is" {
+  say "It goes into the block exactly as it arrived, next to the encoded columns."
+  cols: struct at (620, 300) {
+    title: "block"
+    fields: { _time: "delta", level: "dict", status: "uint16", duration: "uint8", ip: "IPv4", _msg: "as is" }
+    cellWidth: 320
+    size: 24
+  }
+  cols.highlight(_msg, muted)
+then
+  asIs: msg[5] -> cols._msg { color: muted, label: "not re-encoded" }
+}
+
+step "zstd" (1200ms) {
+  say "Then the whole block, encoded columns and raw messages alike, is compressed with zstd, which squeezes out whatever repetition is left."
+  remove asIs
+  cols.unhighlight()
+  // every column of the block feeds zstd, messages included
+  z: merge at (1290, 470) { label: "zstd", origin: center, size: 40 }
+  z.from(cols._time, cols.level, cols.status, cols.duration, cols.ip, cols._msg)
+then
+  z.flow()
+  cols.opacity = 0.4
+then
+  out: box at right-of(z, 90) { text: "compressed\nblock", width: 210, height: 90, size: 26, color: good, origin: left }
+  arrowOut: z.out -> out { color: good }
+  parcel: emoji at below(out, 40) { char: "📦", size: 110, origin: top }
+  parcel.burst(12, "✨")
+  out.tada()
+}
+
+// ── summary ─────────────────────────────────────────────────────────────────
+
+frame "summary" (fade, 900ms) {
+  say "To sum up: turn rows into columns, pick the right encoding for each column, and let zstd squeeze out what's left."
+  steps: list at (110, 220) {
+    bullet: check
+    size: 30
+    items: [
+      "Rows → columns: similar values side by side",
+      "Blocks: up to 2 MB of rows, encoded and compressed together",
+      "Dictionary: few distinct values → 1-byte index",
+      "Integers: smallest width that fits the max",
+      "IPv4: 4 bytes instead of up to 15",
+      "Delta: store differences, not values",
+      "Messages: stored as is",
+      "zstd on top of every block"
+    ]
+  }
+  score: table at (1060, 220) {
+    size: 22
+    mono: true
+    panel: "Bytes per value"
+    columns: ["encoding", "before", "after"]
+    rows: [["dictionary", "\"error\" 5 B", "1 B"], ["uint8", "\"230\" 3 B", "1 B"], ["uint16", "\"404\" 3 B", "2 B"], ["IPv4", "\"192.168.1.12\" 12 B", "4 B"], ["delta", "int64 8 B", "≈ 1 B"]]
+  }
+}
+
+step "recap" (600ms) {
+  steps.check(0); steps.check(1); steps.check(2); steps.check(3)
+  steps.check(4); steps.check(5); steps.check(6); steps.check(7)
+}
+
+frame "thanks" (fade, 1200ms, hold: 2500ms) {
+  cover: title at center() {
+    text: "Thanks!"
+    subtitle: "Jesús Espino · Software Engineer @ VictoriaMetrics"
+    size: 96
+  }
+  wave: emoji at (960, 190) { char: "👋", size: 140, origin: top }
+  wave.wiggle()
+}

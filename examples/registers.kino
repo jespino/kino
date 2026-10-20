@@ -1,0 +1,106 @@
+// What happens when a CPU runs `add`: registers, C source and the disassembly.
+video {
+  size: (1920, 1080), fps: 30, transition: 700ms, hold: 1100ms
+  voice: { speaker: Jasper }
+}
+
+
+frame "title" (1500ms, ease-out, hold: 1800ms) {
+  cover: title at center() {
+    eyebrow: "Computer architecture · part 1"
+    text: "Inside a CPU core"
+    subtitle: "registers, instructions, and a tiny C function"
+    size: 96
+  }
+}
+frame "registers" (fade, 900ms) {
+  say "Let's see what the CPU actually does when we call a tiny C function."
+
+  chapters: tabs at (960, 36) { items: ["Registers", "The stack", "The cache"], origin: top, size: 22 }
+
+  regs: struct at (40, 290) {
+    panel: "Register file · one M1 core"
+    columns: 4
+    size: 19
+    cellWidth: 156
+    fields: {
+      x0: 0, x1: 0, x2: 0, x3: 0, x4: 0, x5: 0, x6: 0, x7: 0,
+      x8: 0, x9: 0, x10: 0, x11: 0, x12: 0, x13: 0, x14: 0, x15: 0,
+      x16: 0, x17: 0, x18: 0, x19: 0, x20: 0, x21: 0, x22: 0, x23: 0,
+      x24: 0, x25: 0, x26: 0, x27: 0, x28: 0, x29: 0, x30: 0, sp: 0,
+      pc: 0
+    }
+    notes: { x29: fp, x30: lr }
+    colors: { x29: accent2, x30: good, sp: accent2, pc: pink }
+    span: { pc: 4 }
+  }
+
+  src: code at (815, 160) {
+    title: "c"
+    lang: c
+    size: 36
+    lineNumbers: false
+    width: 1065
+    code: `
+      long add(long a, long b) {
+          return a + b;
+      }
+    `
+  }
+
+  asm: code at below(src, 14) {
+    title: "clang -O1 · objdump -d"
+    lang: asm
+    size: 36
+    lineNumbers: false
+    width: 1065
+    code: `
+      100000460  add    x0, x1, x0
+      100000464  ret
+    `
+  }
+}
+
+step "call add(3, 4)" {
+  say "We call add with three and four. The arguments arrive in registers x zero and x one."
+
+  regs { x0: 3, x1: 4, pc: "0x100000460" }
+  regs.highlight(x0)
+  regs.highlight(x1)
+  src.highlight(1)
+}
+
+step "add x0, x1, x0" {
+  say "The compiler turned the whole function into one add instruction, which writes the sum back into x zero."
+
+  regs.unhighlight()
+  src.highlight(2)
+  asm.highlight(1)
+  asm.glow = true
+then
+  regs.x0 = 7
+  regs.highlight(x0, pink)
+  regs.highlight(pc)
+  regs.pc = "0x100000464"
+}
+
+step "ret" {
+  say "Then ret jumps back to the caller, and the result, seven, is already waiting in x zero."
+
+  regs.unhighlight()
+  asm.highlight(2)
+  src.highlight(3)
+  regs.pc = "0x100000468"
+  regs.highlight(x0, good)
+}
+
+step "next: the stack" (900ms, hold: 1500ms) {
+  say "No memory was touched at all. Next, let's look at the stack."
+
+  chapters.next()
+  asm.glow = false
+  regs.panelGlow = true
+  regs.unhighlight()
+  src.unhighlight()
+  asm.unhighlight()
+}

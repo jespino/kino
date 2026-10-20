@@ -1,0 +1,68 @@
+// UI walkthrough: a cursor moves to a button and clicks it; a checklist updates.
+video { size: (1280, 720), transition: 650ms, hold: 700ms }
+
+
+frame "title" (1500ms, ease-out, hold: 1800ms) {
+  cover: title at center() {
+    eyebrow: "Product tour"
+    text: "Deploy in one click"
+    subtitle: "a cursor, a button and a checklist"
+    size: 64
+  }
+}
+frame "app" (fade) {
+  panel: box at (140, 120) { width: 520, height: 470, fill: surface, radius: 18 }
+  heading: label at (180, 160) { text: "Deploy checklist", size: 32, weight: 700 }
+  todo: list at (190, 240) {
+    bullet: check
+    items: ["Run tests", "Build image", "Push to registry"]
+  }
+  deploy: button at (180, 500) { text: "Deploy", variant: primary }
+  cancel: button at right-of(deploy, 20) { text: "Cancel", variant: secondary }
+  cur: cursor { at: (900, 600) }
+  log: code at (760, 120) { lang: sh, code: "$ ", lineNumbers: false, width: 400, height: 470, size: 20 }
+}
+
+step "move to deploy" (ease-in-out) {
+  cur.at = deploy
+}
+step "click" (400ms) {
+  cur.click()
+  deploy.click()
+}
+step "tests" {
+  todo.check(0)
+  log.code = `
+    $ make test
+    ok   ./...  2.1s
+  `
+}
+step "build" {
+  todo.check(1)
+  log.code = `
+    $ make test
+    ok   ./...  2.1s
+    $ docker build .
+    => naming to app:latest
+  `
+}
+step "push" {
+  todo.check(2)
+  todo.push("Deployed!")
+  todo.highlight(3, good)
+  log.code = `
+    $ make test
+    ok   ./...  2.1s
+    $ docker build .
+    => naming to app:latest
+    $ docker push app:latest
+    latest: digest sha256:9f1c
+  `
+  log.highlight(5, 6)
+}
+step "zoom in" (1000ms, hold: 1500ms) {
+  camera.focus(todo, 1.8)
+}
+step "zoom out" (800ms) {
+  camera.reset()
+}

@@ -1,0 +1,63 @@
+// Tables sort by moving rows; matrices highlight cells; camera moves between them.
+video { size: (1280, 720), transition: 700ms, hold: 900ms }
+
+
+frame "title" (1500ms, ease-out, hold: 1800ms) {
+  cover: title at center() {
+    eyebrow: "Data structures"
+    text: "Tables & grids"
+    subtitle: "sorting rows, filtering, and matrix highlights"
+    size: 64
+  }
+}
+frame "users" (fade) {
+  q: code at (60, 60) { lang: sql, lineNumbers: false, size: 22, code: "SELECT name, age FROM users;" }
+  users: table at below(q, 40) {
+    columns: [id, name, age]
+    rows: [[1, "Ada", 36], [2, "Linus", 28], [3, "Grace", 45], [4, "Ken", 31]]
+    size: 22
+  }
+  grid: matrix at (760, 120) {
+    rows: 4
+    cols: 4
+    labels: true
+    cell: 70
+  }
+}
+
+step "order by age" {
+  q.code = "SELECT name, age FROM users ORDER BY age;"
+  users.sortBy(age)
+}
+step "where age > 30" {
+  q.code = `
+    SELECT name, age FROM users
+    WHERE age > 30 ORDER BY age;
+  `
+  users.highlightRow(1, accent)
+  users.highlightRow(2, accent)
+  users.highlightRow(3, accent)
+}
+step "insert" {
+  users.unhighlight()
+  q.code = "INSERT INTO users VALUES (5, 'Barbara', 33);"
+  users.insertRow(2, 5, "Barbara", 33)
+  users.highlightRow(2, good)
+}
+step "fill diagonal" {
+  users.unhighlight()
+  grid[0][0] = 1
+  grid[1][1] = 1
+  grid[2][2] = 1
+  grid[3][3] = 1
+  grid.highlight(0, 0, good)
+  grid.highlight(1, 1, good)
+  grid.highlight(2, 2, good)
+  grid.highlight(3, 3, good)
+}
+step "row 2" {
+  grid.unhighlight()
+  grid.highlightRow(2, accent)
+  camera.focus(grid, 1.6)
+}
+step "back" { camera.reset() }

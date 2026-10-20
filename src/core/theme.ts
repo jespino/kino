@@ -1,0 +1,229 @@
+export interface Theme {
+  [token: string]: string;
+}
+
+const base = {
+  // unquoted family names: some SVG rasterizers mishandle quoted names in lists.
+  // Inter and JetBrains Mono are bundled in assets/fonts.
+  fontSans: 'Inter, DejaVu Sans, Helvetica Neue, Arial, sans-serif',
+  fontMono: 'JetBrains Mono, DejaVu Sans Mono, Menlo, Consolas, monospace',
+  // background light blobs (hex + opacity); opacity 0 disables them
+  bgGlowA: '#000000',
+  bgGlowAOpacity: '0',
+  bgGlowB: '#000000',
+  bgGlowBOpacity: '0',
+  vignette: '0',
+  // captions, tabs and eyebrows; empty = fontSans
+  fontCaption: '',
+  // code blocks; empty = fontMono
+  fontCode: '',
+  // multiplier for highlight fill opacity
+  tint: '1',
+  // what a spotlight dims the rest of the picture with
+  shade: '#000000',
+  // ---- paper themes (all 0 = off) ----
+  // pencil: how far (px) strokes stray from the exact shape; also turns glows into watercolor halos
+  roughness: '0',
+  // fills painted as watercolor washes (needs roughness)
+  watercolor: '0',
+  // opacity of the paper grain laid over the frame
+  paperGrain: '0',
+  // outline width (relative) that fakes bold for single-weight handwriting fonts
+  fauxBold: '0',
+  // ---- slide-template chrome (empty = off) ----
+  // gradient side bars: comma-separated colors top→bottom, width as a fraction of the frame
+  edgeLeft: '',
+  edgeRight: '',
+  edgeWidth: '0',
+  // footer texts (left is bold, like a wordmark) and their color
+  footerLeft: '',
+  footerCenter: '',
+  footerRight: '',
+  footerColor: '',
+  // `bar`: title cards drawn like a slide-template cover (see the title widget)
+  titleStyle: '',
+  // full-bleed gradient behind title cards: comma-separated colors, top-left→bottom-right
+  titleBackdrop: '',
+  // `brand` color: a gradient across a shape, for rings and outlines (`stroke: brand`)
+  brandGradient: '',
+  // panels as white cards: corner radius and drop-shadow strength (0 = flat, translucent)
+  panelRadius: '16',
+  panelShadow: '0',
+};
+
+export const themes: Record<string, Theme> = {
+  /** Deep navy, cyan accents, soft glows. The default. */
+  neon: {
+    ...base,
+    bg: '#060a11',
+    bgGlowA: '#1a6aa3',
+    bgGlowAOpacity: '0.30',
+    bgGlowB: '#4a3a8c',
+    bgGlowBOpacity: '0.16',
+    vignette: '0.55',
+    fg: '#e9eff7',
+    muted: '#66758b',
+    surface: '#0d1520',
+    surface2: '#0a1018',
+    border: '#1b2636',
+    panel: '#0b131d',
+    panelBorder: '#1d3a4e',
+    panelHeader: '#131c28',
+    caption: '#3cc8f0',
+    glow: '#3cc8f0',
+    accent: '#3cc8f0',
+    accent2: '#a78bfa',
+    pink: '#ff5fa2',
+    highlight: '#3cc8f0',
+    good: '#34d399',
+    bad: '#fb7185',
+    warn: '#fbbf24',
+    info: '#60a5fa',
+    code: '#0a1119',
+    codeHeader: '#141c27',
+    codeKeyword: '#ff5fa2',
+    codeString: '#9be59b',
+    codeNumber: '#fbbf24',
+    codeComment: '#56657a',
+    codeFunc: '#3cc8f0',
+    codeType: '#ff5fa2',
+    codeText: '#e9eff7',
+    codePunct: '#c4cfdc',
+    codeReg: '#3cc8f0',
+    codeAddr: '#7b889c',
+    buttonText: '#04121a',
+  },
+  dark: {
+    ...base,
+    bg: '#0f1218',
+    fg: '#e6e9ef',
+    muted: '#8b93a7',
+    surface: '#1f2533',
+    surface2: '#151a24',
+    border: '#3b4461',
+    panel: '#151a24',
+    panelBorder: '#3b4461',
+    panelHeader: '#1f2533',
+    caption: '#7aa2f7',
+    glow: '#7aa2f7',
+    accent: '#7aa2f7',
+    accent2: '#bb9af7',
+    pink: '#f7768e',
+    highlight: '#e0af68',
+    good: '#9ece6a',
+    bad: '#f7768e',
+    warn: '#ff9e64',
+    info: '#7dcfff',
+    code: '#161b26',
+    codeHeader: '#1d2330',
+    codeKeyword: '#bb9af7',
+    codeString: '#9ece6a',
+    codeNumber: '#ff9e64',
+    codeComment: '#5c6585',
+    codeFunc: '#7aa2f7',
+    codeType: '#2ac3de',
+    codeText: '#c0caf5',
+    codePunct: '#89ddff',
+    codeReg: '#7dcfff',
+    codeAddr: '#5c6585',
+    buttonText: '#0f1218',
+  },
+  light: {
+    ...base,
+    bg: '#fafaf7',
+    fg: '#1f2328',
+    muted: '#6e7781',
+    surface: '#ffffff',
+    surface2: '#eef0f3',
+    border: '#c3c9d2',
+    panel: '#ffffff',
+    panelBorder: '#c3c9d2',
+    panelHeader: '#eef0f3',
+    caption: '#0969da',
+    glow: '#0969da',
+    accent: '#0969da',
+    accent2: '#8250df',
+    pink: '#bf3989',
+    highlight: '#d4a72c',
+    good: '#1a7f37',
+    bad: '#cf222e',
+    warn: '#bc4c00',
+    info: '#0598bc',
+    code: '#f6f8fa',
+    codeHeader: '#eaeef2',
+    codeKeyword: '#8250df',
+    codeString: '#0a3069',
+    codeNumber: '#953800',
+    codeComment: '#8c959f',
+    codeFunc: '#6639ba',
+    codeType: '#0550ae',
+    codeText: '#24292f',
+    codePunct: '#57606a',
+    codeReg: '#0550ae',
+    codeAddr: '#8c959f',
+    buttonText: '#ffffff',
+  },
+  /**
+   * Pencil and watercolor on paper: handwriting fonts, graphite outlines,
+   * fills painted as washes, paper grain, and watercolor halos instead of glows.
+   */
+  sketch: {
+    ...base,
+    fontSans: 'Kino Hand, Inter, DejaVu Sans, sans-serif',
+    fontMono: 'Kino Hand, Fantasque Sans Mono, JetBrains Mono, monospace',
+    fontCaption: 'Kino Hand, Inter, sans-serif',
+    fontCode: 'Fantasque Sans Mono, JetBrains Mono, DejaVu Sans Mono, monospace',
+    roughness: '1.6',
+    watercolor: '1',
+    paperGrain: '0.18',
+    fauxBold: '1',
+    tint: '1.9',
+    tabBadge: '#e6e2d8',
+    // on paper, a spotlight fades the rest out instead of darkening it
+    shade: '#f3f0e8',
+    bg: '#fbf9f4',
+    ink: '#33322f',
+    fg: '#2b2a28',
+    muted: '#8a857a',
+    surface: '#fffefb',
+    surface2: '#f7f4ec',
+    border: '#4a4842',
+    panel: '#fffefb',
+    panelBorder: '#4a4842',
+    panelHeader: '#f3efe5',
+    caption: '#2b2a28',
+    glow: '#4a86d0',
+    accent: '#3f7cc8',
+    accent2: '#8a63c2',
+    pink: '#cf5d84',
+    highlight: '#e9a23b',
+    good: '#3f9a6e',
+    bad: '#d2543f',
+    warn: '#e9a23b',
+    info: '#2f9a9a',
+    titleFrom: '#2b2a28',
+    titleTo: '#2b2a28',
+    code: '#fffefb',
+    codeHeader: '#f3efe5',
+    codeKeyword: '#8a63c2',
+    codeString: '#3f9a6e',
+    codeNumber: '#d2543f',
+    codeComment: '#a39e92',
+    codeFunc: '#3f7cc8',
+    codeType: '#2f9a9a',
+    codeText: '#2b2a28',
+    codePunct: '#6b665c',
+    codeReg: '#3f7cc8',
+    codeAddr: '#a39e92',
+    buttonText: '#ffffff',
+  },
+};
+
+export const DEFAULT_THEME = 'neon';
+
+/** Resolve a color: theme token names (accent, good, ...) or any CSS color. */
+export function resolveColor(theme: Theme, v: unknown, fallback: string): string {
+  if (typeof v === 'object' && v !== null && 'text' in v) v = (v as { text: string }).text;
+  if (typeof v !== 'string' || v === '') return theme[fallback] ?? fallback;
+  return theme[v] ?? v;
+}
