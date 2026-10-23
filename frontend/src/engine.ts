@@ -1,7 +1,7 @@
 // Compiling, saving and playing the open script. React components read the
 // results from the store; everything here runs outside React.
-import { collectNarration, compile, KinoError, type Movie, type NarrationRequest, type ProjectVoice } from '../kino.ts';
-import { exportMp4, exportPdf } from '../export.ts';
+import { collectNarration, compile, extractEmojis, extractImages, KinoError, type ImageAsset, type Movie, type NarrationRequest, type ProjectVoice } from '../kino.ts';
+import { exportHtml, exportMp4, exportPdf } from '../export.ts';
 import { customWidgets } from '../widgets.ts';
 import { Narration } from '../narration.ts';
 import { preloadEmoji, studioEmoji } from '../emoji.ts';
@@ -253,5 +253,41 @@ export async function exportVideo() {
   } catch (e) {
     st().setProgress(null);
     st().showToast(`Export failed: ${errorText(e)}`);
+  }
+}
+
+/** The video as one self-contained HTML page (player, fonts, pictures and narration inline). */
+export async function exportPage() {
+  if (!st().movie) return;
+  play(false);
+  try {
+    const withVoice = await prepareAudio();
+    const movie = st().movie!;
+    st().setProgress('Mixing narration…');
+    const audio = withVoice ? await narration.mix(movie) : null;
+    st().setProgress('Saving…');
+    const { source, theme } = st();
+    const emoji: Record<string, string> = {};
+    for (const e of extractEmojis(source)) {
+      const svg = studioEmoji(e);
+      if (svg) emoji[e] = svg;
+    }
+    const images: Record<string, ImageAsset> = {};
+    for (const src of extractImages(source)) {
+      const img = inlineImages(src);
+      if (img) images[src] = img;
+    }
+    const durations = Object.fromEntries(movie.narration.filter((c) => c.ready).map((c) => [c.request.id, c.duration]));
+    const { blob, withAudio } = await exportHtml(
+      selfContained(),
+      { title: st().project?.name || baseName(), source, theme: theme || undefined, voice: projectVoice(), narration: durations, emoji, images },
+      audio,
+    );
+    const saved = await saveFile(blob, `${baseName()}.html`);
+    st().setProgress(null);
+    if (saved) st().showToast(withAudio || !movie.narration.length ? 'HTML exported.' : 'HTML exported without narration audio.');
+  } catch (e) {
+    st().setProgress(null);
+    st().showToast(`HTML export failed: ${errorText(e)}`);
   }
 }

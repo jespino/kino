@@ -121,10 +121,15 @@ npm run tts            # start the server on http://127.0.0.1:8808 (downloads th
 - **CLI:** `npm run render` generates missing clips the same way and mixes
   them into the video (AAC in MP4, Opus in WebM). `--no-audio` skips audio.
   `--tts <url>` points at another server.
-- **Export MP4** in the studio also includes the narration (Opus track).
-  **Export PDF** exports the slides instead: a page for every step and every
+- The studio's **Export** menu: **Video (MP4)** also includes the narration
+  (Opus track). **Web page (HTML)** writes one self-contained file that plays in
+  any browser, offline: the engine, the script, the theme's fonts, pictures,
+  emoji and the narration track are all inline. It has a video mode (scrubber
+  with step marks, subtitles) and a slides mode (`s`), and takes deep links
+  (`#t=12.5`, `#slide=3`). **Slides (PDF)** exports the slides: a page for every step and every
   `then` sub-step (what Present mode stops on), without narration. A step that
   only plays effects (bursts, clicks, bounces) is shown halfway through them.
+  **Current frame (SVG)** saves the frame at the playhead.
 - **Cache:** `.kino-cache/tts/<hash>.wav`, keyed by the text and all voice
   settings. The CLI and the studio share it. Delete a file to
   regenerate that line.

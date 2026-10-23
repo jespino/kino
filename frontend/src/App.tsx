@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import { themes } from '../kino.ts';
 import { loadFonts } from '../fonts.ts';
 import { api, errorText, EVENT_PROJECT, EVENT_SOURCE, on, type Project } from './api.ts';
-import { exportFrame, exportSlides, exportVideo, jump, play, rebuild, replaceSource } from './engine.ts';
+import { exportFrame, exportPage, exportSlides, exportVideo, jump, play, rebuild, replaceSource } from './engine.ts';
 import { Preview } from './preview/Preview.tsx';
 import { present, Slides } from './preview/Slides.tsx';
 import { ProjectMenu } from './project/ProjectMenu.tsx';
@@ -95,7 +95,6 @@ function Toolbar() {
   const error = useStore((s) => s.error);
   const theme = useStore((s) => s.theme);
   const showSource = useStore((s) => s.showSource);
-  const exporting = useStore((s) => !!s.progress && /^(Rendering|Mixing narration|Saving)/.test(s.progress));
   return (
     <header className="toolbar">
       <span className="brand">kino</span>
@@ -136,18 +135,58 @@ function Toolbar() {
               Window
             </button>
           </span>
-          <button onClick={exportFrame} disabled={!hasMovie} title="Save the frame at the playhead as SVG">
-            Frame SVG
-          </button>
-          <button onClick={exportSlides} disabled={!hasMovie || exporting} title="The slides as a PDF: a page per step and sub-step">
-            Export PDF
-          </button>
-          <button className="primary" onClick={exportVideo} disabled={!hasMovie || exporting} title="Render the whole video to MP4">
-            Export MP4
-          </button>
+          <ExportMenu />
         </>
       )}
     </header>
+  );
+}
+
+const EXPORTS = [
+  { label: 'Video (MP4)', hint: 'Render the whole video, with narration', run: exportVideo, long: true },
+  { label: 'Web page (HTML)', hint: 'One self-contained file that plays the video or the slides in any browser', run: exportPage, long: true },
+  { label: 'Slides (PDF)', hint: 'A page per step and sub-step', run: exportSlides, long: true },
+  { label: 'Current frame (SVG)', hint: 'The frame at the playhead', run: exportFrame, long: false },
+];
+
+function ExportMenu() {
+  const hasMovie = useStore((s) => !!s.movie);
+  const exporting = useStore((s) => !!s.progress && /^(Rendering|Mixing narration|Saving)/.test(s.progress));
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener('mousedown', close);
+    return () => window.removeEventListener('mousedown', close);
+  }, [open]);
+
+  return (
+    <span className="export-menu" ref={box}>
+      <button className="primary" onClick={() => setOpen(!open)} disabled={!hasMovie} title="Export the video, a web page, the slides or a frame">
+        {exporting ? 'Exporting…' : 'Export'} ▾
+      </button>
+      {open && (
+        <div className="menu right">
+          {EXPORTS.map((x) => (
+            <button
+              key={x.label}
+              disabled={x.long && exporting}
+              onClick={() => {
+                setOpen(false);
+                x.run();
+              }}
+            >
+              {x.label}
+              <span className="menu-hint">{x.hint}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
   );
 }
 

@@ -565,6 +565,22 @@ code {
 .menu button:hover {
   background: var(--panel-2);
 }
+.menu.right {
+  left: auto;
+  right: 0;
+}
+.export-menu {
+  position: relative;
+}
+.export-menu .menu button {
+  display: block;
+  width: 100%;
+}
+.menu-hint {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+}
 .menu-sep {
   font-size: 11px;
   color: var(--text-muted);
