@@ -20,6 +20,9 @@ const FONTS: [string, number, string][] = [
   ['Lato', 900, 'Lato-Black.ttf'],
   ['Fantasque Sans Mono', 400, 'FantasqueSansMono-Regular.ttf'],
   ['Fantasque Sans Mono', 700, 'FantasqueSansMono-Bold.ttf'],
+  ['Bangers', 400, 'Bangers-Regular.ttf'],
+  ['Comic Neue', 400, 'ComicNeue-Regular.ttf'],
+  ['Comic Neue', 700, 'ComicNeue-Bold.ttf'],
 ];
 const EXTRA = '•·→←↑↓✓✗…—–“”‘’×÷≤≥≠°€£¡¿áéíóúñçüö²³';
 const chars = [...Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i)), ...EXTRA];

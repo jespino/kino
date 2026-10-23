@@ -35,16 +35,19 @@ for UIs, `emoji-fun.kino` for emoji).
    moment: `npm run render -- <file> --png out/x.png --at 12.5s`. Themes have
    different font widths, so if the script may be shown in another theme, check
    that one too (`--theme sketch`).
-5. **Render** when asked: `npm run render -- <file> -o out/<name>.mp4`. Narration
+5. **Render** when asked: `npm run render -- <file> -o out/<name>.mp4` (or
+   `-o out/<name>.pdf` for the slides as a PDF, a page per step and `then`
+   sub-step). Narration
    is generated if the TTS server runs (`npm run tts`). Add `--no-audio` for a
-   silent draft. Or preview interactively with `npm run dev`.
+   silent draft. Or open the project in Kino Studio (`make app`, then
+   `bin/kino path/to/project`) for a live preview and a timeline.
 
 ## File structure
 
 ```kino
 video {
   size: (1920, 1080), fps: 30            // 1920x1080 for detailed scenes; default 1280x720
-  theme: neon                            // neon (default) | sketch (hand-drawn, paper) | dark | light | { base: neon, accent: "#ff0" }
+  theme: neon                            // neon (default) | sketch (hand-drawn, paper) | comic (comic book) | dark | light | { base: neon, accent: "#ff0" }
   transition: 700ms, hold: 900ms         // default step animation / pause after each step
   narrationHold: 400ms                   // pause after a step's narration
   easing: ease-in-out
@@ -176,7 +179,13 @@ Common props on every widget: `at`, `origin`, `opacity` (`hide()`/`show()`),
   `Marcus` (radio DJ), `Herbert` (professor), `Maeve` (storyteller), `Miles`,
   `Claire`, `Grace`), `language` (`Spanish`, `German`, ... switches to that
   language's voice), `instruct` (an emotion for every line), `preset`
-  (`stable`/`expressive`), `reference` (a WAV to clone a voice), `model`.
+  (`stable`/`expressive`), `reference` (a WAV to clone a voice), `model`,
+  `provider`, `speed`. The provider (`local`, `elevenlabs`, `openai`, `espeak`,
+  `festival`) and the default voice are normally per project, in `kino.json`
+  next to the script (`{"tts": {"provider": "espeak", "voice": {"language": "Spanish"}}}`);
+  the project's settings win over `video { voice }`, so don't fight them there;
+  `voice {}` / `say (...)` still override per line. API keys live in the user's
+  global settings, never in the script or the project.
 - Clips are cached in `.kino-cache/tts` by text + voice. Editing a line
   regenerates only that line.
 
@@ -214,5 +223,5 @@ Common props on every widget: `at`, `origin`, `opacity` (`hide()`/`show()`),
 
 If no widget fits, write one in TypeScript with `defineWidget` (see
 `examples/widgets/gauge.ts` and the README). Then pass it with
-`--widgets path.ts` to `render`/`check`, and add it to `web/widgets.ts` for the
+`--widgets path.ts` to `render`/`check`, and add it to `frontend/widgets.ts` for the
 studio.

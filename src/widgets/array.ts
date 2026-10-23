@@ -213,6 +213,21 @@ function idxAttrs(rc: RenderCtx, size: number, anchor: string) {
   return { 'font-size': size * 0.55, 'font-family': rc.theme.fontMono, 'text-anchor': anchor, fill: rc.theme.muted };
 }
 
+/** Stack ranges only when they overlap: each one takes the first lane free over its cells. */
+function rangeLanes(ranges: Record<string, Range>): Map<string, number> {
+  const lanes: Range[][] = [];
+  const out = new Map<string, number>();
+  for (const [name, r] of Object.entries(ranges)) {
+    const lo = r.from;
+    const hi = Math.max(r.from + 1, r.to);
+    let k = lanes.findIndex((lane) => lane.every((o) => hi <= o.from || lo >= Math.max(o.from + 1, o.to)));
+    if (k < 0) k = lanes.push([]) - 1;
+    lanes[k].push(r);
+    out.set(name, k);
+  }
+  return out;
+}
+
 /** Bracket under (or beside) cells [from, to) with a label: shows slices/windows over the array. */
 function rangeNodes(rc: RenderCtx, p: Props, name: string, r: Range): RNode[] {
   const { vertical, cell } = geometry(p);
@@ -222,7 +237,7 @@ function rangeNodes(rc: RenderCtx, p: Props, name: string, r: Range): RNode[] {
   const empty = r.to <= r.from;
   const lw = { stroke: color, 'stroke-width': 2.5, fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
   const ts = p.size * 0.7;
-  const order = Object.keys(p.ranges).indexOf(name);
+  const order = rangeLanes(p.ranges as Record<string, Range>).get(name) ?? 0;
   if (vertical) {
     const x = a.x + a.w + 14 + order * 36;
     const y0 = a.y + 4;

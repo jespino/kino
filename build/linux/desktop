@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=Kino Studio
+Comment=Describe explanatory animations as text, render them as video
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/kino %u
+Terminal=false
+Type=Application
+Icon=kino
+Categories=Utility;
+StartupWMClass=kino
+
+ 

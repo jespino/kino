@@ -17,6 +17,10 @@ const base = {
   fontCaption: '',
   // code blocks; empty = fontMono
   fontCode: '',
+  // title-card headlines; empty = fontSans
+  fontTitle: '',
+  // letter spacing of title-card headlines, in em
+  titleTracking: '-0.02',
   // multiplier for highlight fill opacity
   tint: '1',
   // what a spotlight dims the rest of the picture with
@@ -40,7 +44,7 @@ const base = {
   footerCenter: '',
   footerRight: '',
   footerColor: '',
-  // `bar`: title cards drawn like a slide-template cover (see the title widget)
+  // `bar`: title cards drawn like a slide-template cover; `burst`: headline over a comic starburst (see the title widget)
   titleStyle: '',
   // full-bleed gradient behind title cards: comma-separated colors, top-left→bottom-right
   titleBackdrop: '',
@@ -49,6 +53,16 @@ const base = {
   // panels as white cards: corner radius and drop-shadow strength (0 = flat, translucent)
   panelRadius: '16',
   panelShadow: '0',
+  // ---- comic themes (all 0 = off) ----
+  // outline width (px) of shapes, inked in their stroke color; glows become hard rims, halos are dropped
+  inkWidth: '0',
+  // offset (px) of the solid shadow under opaque outlined shapes and big lettering
+  inkShadow: '0',
+  // opacity and color of the halftone (Ben-Day) dots towards the edges of the background
+  halftone: '0',
+  halftoneColor: '',
+  // width (px) of the ink frame around the picture, like a comic panel
+  frameBorder: '0',
 };
 
 export const themes: Record<string, Theme> = {
@@ -215,6 +229,63 @@ export const themes: Record<string, Theme> = {
     codePunct: '#6b665c',
     codeReg: '#3f7cc8',
     codeAddr: '#a39e92',
+    buttonText: '#ffffff',
+  },
+  /**
+   * Comic book: newsprint paper with halftone dots, thick ink outlines, solid
+   * offset shadows, flat primary colors, Bangers lettering for headlines and
+   * captions, Comic Neue for text, and an inked panel frame.
+   */
+  comic: {
+    ...base,
+    fontSans: 'Comic Neue, Inter, DejaVu Sans, sans-serif',
+    fontMono: 'JetBrains Mono, DejaVu Sans Mono, Menlo, monospace',
+    fontCaption: 'Bangers, Comic Neue, Impact, sans-serif',
+    fontTitle: 'Bangers, Comic Neue, Impact, sans-serif',
+    titleTracking: '0.03',
+    titleStyle: 'burst',
+    inkWidth: '3',
+    inkShadow: '6',
+    halftone: '0.55',
+    halftoneColor: '#f0a830',
+    frameBorder: '8',
+    tint: '1.7',
+    panelRadius: '6',
+    tabBadge: '#fff1b8',
+    bg: '#fff4d6',
+    ink: '#141414',
+    fg: '#141414',
+    muted: '#5e5547',
+    surface: '#ffffff',
+    surface2: '#fff9e6',
+    border: '#141414',
+    panel: '#ffffff',
+    panelBorder: '#141414',
+    panelHeader: '#ffd83d',
+    caption: '#d7261e',
+    glow: '#ff3d2e',
+    accent: '#1d6ad8',
+    accent2: '#d7261e',
+    pink: '#ff4f9a',
+    highlight: '#ffd400',
+    good: '#21a347',
+    bad: '#e5301f',
+    warn: '#ff9100',
+    info: '#13a3d8',
+    titleFrom: '#ffe14d',
+    titleTo: '#ff8a00',
+    code: '#fffdf4',
+    codeHeader: '#ffd83d',
+    codeKeyword: '#d7261e',
+    codeString: '#1d8a3a',
+    codeNumber: '#1d6ad8',
+    codeComment: '#8a7f6a',
+    codeFunc: '#7b2fbf',
+    codeType: '#c9500a',
+    codeText: '#141414',
+    codePunct: '#3d382f',
+    codeReg: '#1d6ad8',
+    codeAddr: '#8a7f6a',
     buttonText: '#ffffff',
   },
 };

@@ -2,6 +2,7 @@ import { fmt } from './geometry.ts';
 import type { Frame } from './render.ts';
 import type { Theme } from './theme.ts';
 import { sketchNode } from './sketch.ts';
+import { comicNode } from './comic.ts';
 import { GRAIN_PNG, GRAIN_SIZE } from './grain.ts';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -34,6 +35,9 @@ export function frameToSVG(frame: Frame, width: number, height: number, backgrou
   const v = frame.view;
   const bg = `x="${fmt(v.x - 1)}" y="${fmt(v.y - 1)}" width="${fmt(v.w + 2)}" height="${fmt(v.h + 2)}"`;
   const glowA = +theme.bgGlowAOpacity, glowB = +theme.bgGlowBOpacity, vig = +theme.vignette, grain = +theme.paperGrain || 0;
+  const dots = +theme.halftone || 0;
+  // screen-fixed decorations keep their size when the camera zooms
+  const px = v.w / width;
   const parts: string[] = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${fmt(v.x)} ${fmt(v.y)} ${fmt(v.w)} ${fmt(v.h)}">`,
     `<defs>${extraDefs}`,
@@ -54,6 +58,13 @@ export function frameToSVG(frame: Frame, width: number, height: number, backgrou
       ? `<filter id="kshadow" x="-20%" y="-30%" width="140%" height="170%"><feGaussianBlur stdDeviation="14"/><feOffset dy="8"/>` +
         `<feComponentTransfer><feFuncA type="linear" slope="${theme.panelShadow}"/></feComponentTransfer></filter>`
       : '',
+    // halftone (Ben-Day) dots, strongest towards the edges of the picture
+    dots > 0
+      ? `<pattern id="kdots" width="${fmt(16 * px)}" height="${fmt(16 * px)}" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">` +
+        `<circle cx="${fmt(8 * px)}" cy="${fmt(8 * px)}" r="${fmt(3.2 * px)}" fill="${esc(theme.halftoneColor || theme.accent)}"/></pattern>` +
+        `<radialGradient id="kdotsfade" cx="0.5" cy="0.5" r="0.72"><stop offset="0.35" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity="1"/></radialGradient>` +
+        `<mask id="kdotsmask"><rect ${bg} fill="url(#kdotsfade)"/></mask>`
+      : '',
     grain > 0
       ? `<pattern id="kgrain" width="${GRAIN_SIZE}" height="${GRAIN_SIZE}" patternUnits="userSpaceOnUse"><image width="${GRAIN_SIZE}" height="${GRAIN_SIZE}" href="${GRAIN_PNG}"/></pattern>`
       : '',
@@ -62,20 +73,31 @@ export function frameToSVG(frame: Frame, width: number, height: number, backgrou
   ];
   if (glowA > 0) parts.push(`<rect ${bg} fill="url(#kbgA)"/>`);
   if (glowB > 0) parts.push(`<rect ${bg} fill="url(#kbgB)"/>`);
+  if (dots > 0) parts.push(`<rect ${bg} fill="url(#kdots)" mask="url(#kdotsmask)" opacity="${dots}"/>`);
   // slide-template chrome, fixed to the screen (it ignores the camera)
   const edge = (+theme.edgeWidth || 0) * v.w;
   if (edge > 0 && theme.edgeLeft) parts.push(`<rect x="${fmt(v.x - 1)}" y="${fmt(v.y - 1)}" width="${fmt(edge + 1)}" height="${fmt(v.h + 2)}" fill="url(#kedgeL)"/>`);
   if (edge > 0 && theme.edgeRight) parts.push(`<rect x="${fmt(v.x + v.w - edge)}" y="${fmt(v.y - 1)}" width="${fmt(edge + 1)}" height="${fmt(v.h + 2)}" fill="url(#kedgeR)"/>`);
   for (const node of frame.nodes) {
     if (Number(node.attrs.opacity ?? 1) <= 0.001) continue;
-    // hand-drawn themes redraw shapes as pencil strokes and watercolor washes
-    for (const n of sketchNode(node, theme)) {
+    // hand-drawn themes redraw shapes as pencil strokes and watercolor washes, comic ones ink them
+    for (const n of sketchNode(node, theme).flatMap((s) => comicNode(s, theme))) {
       let attrs = '';
       for (const [k, val] of Object.entries(n.attrs)) {
         attrs += ` ${k}="${typeof val === 'number' ? fmt(val) : esc(val)}"`;
       }
       parts.push(n.tag === 'text' ? `<text${attrs}>${esc(n.text ?? '')}</text>` : `<${n.tag}${attrs}/>`);
     }
+  }
+  // comic panel: a paper gutter around an inked frame, cropping whatever reaches the edges
+  const border = (+theme.frameBorder || 0) * px;
+  if (border > 0) {
+    const g = 14 * px, o = `M${fmt(v.x - 1)} ${fmt(v.y - 1)}h${fmt(v.w + 2)}v${fmt(v.h + 2)}h${fmt(-v.w - 2)}Z`;
+    const i = `M${fmt(v.x + g)} ${fmt(v.y + g)}v${fmt(v.h - 2 * g)}h${fmt(v.w - 2 * g)}v${fmt(-v.h + 2 * g)}Z`;
+    parts.push(
+      `<path d="${o} ${i}" fill="${esc(background)}" fill-rule="evenodd"/>`,
+      `<rect x="${fmt(v.x + g)}" y="${fmt(v.y + g)}" width="${fmt(v.w - 2 * g)}" height="${fmt(v.h - 2 * g)}" fill="none" stroke="${esc(theme.ink ?? theme.fg)}" stroke-width="${fmt(border)}"/>`,
+    );
   }
   // footer: dark on the page, light while a title backdrop covers it
   if (theme.footerLeft || theme.footerCenter || theme.footerRight) {

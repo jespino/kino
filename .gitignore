@@ -4,4 +4,12 @@ out/
 tts/.venv/
 tts/.bootstrap/
 .kino-cache/
+# written into project folders by the studio
+.kino/
 __pycache__/
+# Wails desktop app
+bin/
+.task/
+frontend/dist/
+build/linux/appimage/build
+build/windows/nsis/MicrosoftEdgeWebview2Setup.exe

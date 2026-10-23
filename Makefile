@@ -3,7 +3,7 @@
 # Most targets work on one script, chosen with FILE:
 #   make render FILE=examples/go-slices.kino
 #   make png FILE=examples/go-slices.kino AT=3.5s
-# THEME overrides the script's theme (neon, dark, light, sketch):
+# THEME overrides the script's theme (neon, dark, light, sketch, comic):
 #   make render THEME=sketch
 # Extra CLI flags go in ARGS:
 #   make render ARGS="--fps 60 --jobs 4"
@@ -20,7 +20,7 @@ EXAMPLES := $(wildcard examples/*.kino)
 DEPS     := node_modules/.package-lock.json
 
 .DEFAULT_GOAL := help
-.PHONY: help install dev build preview typecheck test check sheet render render-silent png svg \
+.PHONY: help install dev build serve app app-dev app-package typecheck test check sheet render render-silent pdf png svg \
         render-all tts-setup tts clean clean-cache distclean
 
 help: ## Show this help
@@ -37,23 +37,41 @@ $(DEPS): package.json package-lock.json
 install: $(DEPS) ## Install npm dependencies
 
 # ---- studio ----
+# The studio is a desktop app (Wails 3): preview, timeline and an agent terminal
+# around a project folder (a .kino script plus its assets). PROJECT opens one.
 
-dev: $(DEPS) ## Start the studio (editor, live preview, Present mode, MP4 export)
-	npm run dev
+PROJECT  ?=
+GO_TAGS  ?= gtk3
+DIST_STUB = @mkdir -p frontend/dist && [ -n "$$(ls frontend/dist)" ] || echo '<!doctype html>' > frontend/dist/index.html
 
-build: $(DEPS) ## Build the static studio into dist/ (no narration server)
+app: $(DEPS) ## Build the desktop app into bin/kino (run: bin/kino [project])
+	wails3 task build
+
+app-dev: $(DEPS) ## Run the desktop app with hot reload
+	wails3 task dev
+
+app-package: $(DEPS) ## Package the desktop app for this OS
+	wails3 task package
+
+dev: $(DEPS) ## The studio in a browser: kino serve (Go backend) + Vite with hot reload
+	$(DIST_STUB)
+	@trap 'kill 0' EXIT; go run -tags $(GO_TAGS) . serve $(PROJECT) & npm run dev
+
+build: $(DEPS) ## Build the studio UI into frontend/dist/
 	npm run build
 
-preview: build ## Serve the built studio from dist/
-	npx vite preview web --outDir ../dist
+serve: build ## Serve the built studio at http://127.0.0.1:34116 (kino serve)
+	go run -tags $(GO_TAGS) . serve $(PROJECT)
 
 # ---- quality ----
 
 typecheck: $(DEPS) ## Type-check the TypeScript sources
 	npm run typecheck
 
-test: $(DEPS) ## Compile and render every example, plus DSL checks
+test: $(DEPS) ## Compile and render every example, DSL checks, and the Go tests
 	npm test
+	$(DIST_STUB)
+	go test -tags $(GO_TAGS) ./...
 
 check: $(DEPS) ## Validate FILE: errors with line numbers, step timeline, narration status
 	npm run check -- $(FILE) $(KINO_ARGS)
@@ -71,6 +89,10 @@ render: $(DEPS) ## Render FILE to OUT (.mp4/.webm/.gif) with narration if the TT
 render-silent: $(DEPS) ## Render FILE to OUT without narration
 	@mkdir -p $(dir $(OUT))
 	npm run render -- $(FILE) -o $(OUT) --no-audio $(KINO_ARGS)
+
+pdf: $(DEPS) ## Slides of FILE as out/NAME.pdf (a page per step and sub-step)
+	@mkdir -p out
+	npm run render -- $(FILE) -o out/$(NAME).pdf $(KINO_ARGS)
 
 png: $(DEPS) ## Render one frame of FILE at time AT into out/NAME-AT.png
 	@mkdir -p out
@@ -98,8 +120,8 @@ tts: ## Start the TTS server on http://127.0.0.1:8808
 
 # ---- cleanup ----
 
-clean: ## Remove rendered output (out/) and the studio build (dist/)
-	rm -rf out dist
+clean: ## Remove rendered output (out/), the studio build and the app binary (bin/)
+	rm -rf out dist frontend/dist bin .task
 
 clean-cache: ## Remove cached narration clips (they are regenerated on demand)
 	rm -rf .kino-cache

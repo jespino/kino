@@ -11,7 +11,8 @@ import { evaluate, isObj, isPoint, isRef, num, str, type Value } from './values.
 import type { WidgetDef } from './widget.ts';
 import type { EmojiProvider } from './emoji.ts';
 import type { ImageProvider } from './image.ts';
-import { applyVoice, estimateDuration, narrationRequest, sayVoice, videoVoice, type NarrationLookup, type NarrationRequest } from './narration.ts';
+import { TimelineRecorder, type Timeline } from './timeline.ts';
+import { applyVoice, estimateDuration, narrationRequest, sayVoice, videoVoice, type NarrationLookup, type NarrationRequest, type ProjectVoice } from './narration.ts';
 
 export interface VideoConfig {
   width: number;
@@ -70,6 +71,22 @@ export interface Beat {
   chapter: number;
 }
 
+/** A page of the printed version (PDF): the picture once a transition is done. */
+export interface Page {
+  /** transitions completed; draw the page with pageSvg() */
+  beat: number;
+  /**
+   * ms into the transition that leads to `beat` (0: the finished state). Set for
+   * transitions that only play effects (bursts, clicks, bounces): their finished
+   * state is the previous page again, so the page shows them in full swing.
+   */
+  elapsed: number;
+  /** name of the step it belongs to */
+  title: string;
+  /** ms on the timeline */
+  time: number;
+}
+
 export interface CompileOptions {
   widgets?: WidgetDef<any>[];
   /** real durations/urls of generated narration; missing clips use an estimated duration */
@@ -80,6 +97,8 @@ export interface CompileOptions {
   images?: ImageProvider;
   /** theme name that replaces the script's `video { theme }` (neon, dark, light, sketch) */
   theme?: string;
+  /** the project's voice settings (its kino.json) and Kino's default provider */
+  voice?: ProjectVoice;
 }
 
 export class Movie {
@@ -90,6 +109,8 @@ export class Movie {
     public readonly duration: number,
     public readonly narration: NarrationClip[] = [],
     public readonly beats: Beat[] = [],
+    /** steps, transitions and element lifespans, for editor timelines */
+    public readonly timeline: Timeline = { steps: [], elements: [], camera: [] },
   ) {}
 
   /**
@@ -105,6 +126,32 @@ export class Movie {
 
   slideSvgAt(beat: number, elapsed = 0, extraDefs = ''): string {
     return frameToSVG(this.slideFrameAt(beat, elapsed), this.video.width, this.video.height, this.video.background, this.video.theme, extraDefs);
+  }
+
+  /**
+   * Pages for a printed version: the picture after every transition, so every
+   * frame, step and `then` sub-step gets a page (what Present mode stops on).
+   */
+  pages(): Page[] {
+    const out: Page[] = [];
+    let previous = '';
+    this.beats.forEach((b, i) => {
+      const page: Page = { beat: i + 1, elapsed: 0, title: this.chapters[b.chapter]?.name ?? '', time: b.end };
+      const svg = this.pageSvg(page);
+      if (svg === previous && b.end > b.start) {
+        // nothing stays changed: show the effect halfway instead of a repeat of the last page
+        page.elapsed = (b.end - b.start) / 2;
+        page.time = b.start + page.elapsed;
+      }
+      previous = svg;
+      out.push(page);
+    });
+    return out.length ? out : [{ beat: 0, elapsed: 0, title: '', time: 0 }];
+  }
+
+  /** The picture of a page (see pages()). */
+  pageSvg(page: Page, extraDefs = ''): string {
+    return page.elapsed > 0 ? this.slideSvgAt(page.beat - 1, page.elapsed, extraDefs) : this.slideSvgAt(page.beat, 0, extraDefs);
   }
 
   /** number of beats completed at timeline time t */
@@ -170,7 +217,8 @@ export function compile(src: string, opts: CompileOptions = {}): Movie {
   let current = build(state, { line: 1, col: 1 });
   let t = 0;
   let stepNo = 0;
-  let voice = videoVoice(program);
+  let voice = videoVoice(program, opts.voice);
+  const rec = new TimelineRecorder();
   const narration: NarrationClip[] = [];
   /** place a clip at the current time; returns its end time */
   const say = (s: { text: string; opts: Expr[]; pos: Pos }): number => {
@@ -195,7 +243,9 @@ export function compile(src: string, opts: CompileOptions = {}): Movie {
   for (const item of program.items) {
     if (item.t === 'video') continue;
     if (item.t === 'wait') {
+      const step = rec.step('wait', `wait ${item.ms}ms`, t, item.pos);
       hold(item.ms);
+      step.end = t;
       continue;
     }
     if (item.t === 'voice') {
@@ -204,32 +254,41 @@ export function compile(src: string, opts: CompileOptions = {}): Movie {
     }
     if (item.t === 'say') {
       chapters.push({ name: `“${item.text.length > 32 ? item.text.slice(0, 30) + '…' : item.text}”`, time: t, line: item.pos.line });
+      const step = rec.step('say', chapters[chapters.length - 1].name, t, item.pos);
       const end = say(item);
       hold(end - t + video.narrationHold);
+      step.end = t;
       continue;
     }
     stepNo++;
     const isFirst = segments.length === 0 && t === 0;
     const o = stepOptions(item.opts, video, item.t === 'frame' && isFirst);
     chapters.push({ name: item.name ?? `${item.t} ${stepNo}`, time: t, line: item.pos.line });
+    const step = rec.step(item.t, chapters[chapters.length - 1].name, t, item.pos);
 
     // `then` splits a step into sequential sub-steps
     const groups: Stmt[][] = [[]];
+    const groupLines = [item.pos.line];
     for (const s of item.body) {
-      if (s.t === 'then') groups.push([]);
-      else groups[groups.length - 1].push(s);
+      if (s.t === 'then') {
+        groups.push([]);
+        groupLines.push(s.pos.line);
+      } else groups[groups.length - 1].push(s);
     }
     if (item.t === 'frame' && groups.length > 1) throw new KinoError(`'then' is only allowed inside steps`, item.pos);
 
     let next: SceneState = item.t === 'frame' ? emptyState() : structuredClone(state);
     let spokenUntil = -1;
-    for (const g of groups) {
+    for (const [gi, g] of groups.entries()) {
       // narration starts together with its (sub)step
       for (const s of g) if (s.t === 'say') spokenUntil = Math.max(spokenUntil, say(s));
       builder.apply(next, g.filter((s) => s.t !== 'say'));
       const snapshot = structuredClone(next);
       const target = build(snapshot, item.pos);
       beats.push({ start: t, end: t + Math.max(0, o.duration), frame: target, chapter: chapters.length - 1 });
+      const d = Math.max(0, o.duration);
+      step.transitions.push({ start: t, end: t + d, kind: o.kind, ease: o.easeName, line: groupLines[gi] });
+      rec.group(g, t, d, snapshot.widgets);
       if (o.duration > 0) {
         segments.push({ start: t, end: t + o.duration, from: current, to: target, ease: o.ease, kind: o.kind, hold: false });
         t += o.duration;
@@ -243,9 +302,10 @@ export function compile(src: string, opts: CompileOptions = {}): Movie {
       if (spokenUntil > t) hold(spokenUntil - t);
       hold(o.holdSet ? o.hold : video.narrationHold);
     } else hold(o.hold);
+    step.end = t;
   }
   if (t === 0) hold(1000);
-  return new Movie(video, segments, chapters, t, narration, beats);
+  return new Movie(video, segments, chapters, t, narration, beats, rec.finish(t));
 }
 
 function videoConfig(items: Extract<Item, { t: 'video' }>[], themeOverride?: string): VideoConfig {
@@ -284,7 +344,7 @@ function videoConfig(items: Extract<Item, { t: 'video' }>[], themeOverride?: str
 
 function stepOptions(opts: Expr[], video: VideoConfig, firstFrame: boolean) {
   let duration = firstFrame ? 0 : video.transition;
-  let ease = easings[video.easing] ?? easings['ease-in-out'];
+  let easeName = easings[video.easing] ? video.easing : 'ease-in-out';
   let kind: TransitionKind = 'morph';
   let hold = video.hold;
   let holdSet = false;
@@ -292,7 +352,7 @@ function stepOptions(opts: Expr[], video: VideoConfig, firstFrame: boolean) {
     const v = evalWith(e, e.pos);
     const word = typeof v === 'string' || isRef(v) ? str(v) : null;
     if (e.t === 'dur' || typeof v === 'number') duration = num(v);
-    else if (word && easings[word]) ease = easings[word];
+    else if (word && easings[word]) easeName = word;
     else if (word === 'morph' || word === 'fade' || word === 'cut') {
       kind = word;
       if (word === 'cut') duration = 0;
@@ -304,12 +364,12 @@ function stepOptions(opts: Expr[], video: VideoConfig, firstFrame: boolean) {
           holdSet = true;
         }
         else if (k === 'duration') duration = num(x);
-        else if (k === 'ease' || k === 'easing') ease = easings[str(x)] ?? fail(`unknown easing '${str(x)}'`, e.pos);
+        else if (k === 'ease' || k === 'easing') easeName = easings[str(x)] ? str(x) : fail(`unknown easing '${str(x)}'`, e.pos);
         else fail(`unknown step option '${k}' (hold, duration, ease)`, e.pos);
       }
     } else fail(`unknown step option '${str(v)}'. Use a duration, an easing (${Object.keys(easings).join(', ')}), morph|fade|cut, or hold: <dur>`, e.pos);
   }
-  return { duration, ease, kind, hold, holdSet };
+  return { duration, ease: easings[easeName], easeName, kind, hold, holdSet };
 }
 
 function evalWith(e: Expr, pos: Pos): Value {

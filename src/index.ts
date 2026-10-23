@@ -1,5 +1,6 @@
-export { compile, Movie, type VideoConfig, type Chapter, type CompileOptions, type NarrationClip, type Beat } from './core/movie.ts';
-export { collectNarration, estimateDuration, spokenText, DEFAULT_TTS_MODEL, DEFAULT_VOICE, type NarrationRequest, type NarrationAudio, type NarrationLookup, type Voice } from './core/narration.ts';
+export { compile, Movie, type VideoConfig, type Chapter, type CompileOptions, type NarrationClip, type Beat, type Page } from './core/movie.ts';
+export { baseVoice, collectNarration, estimateDuration, spokenText, DEFAULT_TTS_MODEL, DEFAULT_VOICE, TTS_PROVIDERS, type NarrationRequest, type NarrationAudio, type NarrationLookup, type ProjectVoice, type Voice } from './core/narration.ts';
+export { type Timeline, type TimelineStep, type TimelineTransition, type TimelineElement, type ElementSpan, type ElementMark } from './core/timeline.ts';
 export { parse } from './dsl/parser.ts';
 export { KinoError } from './dsl/ast.ts';
 export { defineWidget, h, centeredText, midBaseline, glowRect, captionAttrs, captionFont, codeFont, type WidgetDef, type RNode, type RenderCtx, type WidgetCtx, type Props } from './core/widget.ts';

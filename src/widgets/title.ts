@@ -9,6 +9,7 @@ import { BACKDROP_GRADIENT, HALO_FILTER, TITLE_GRADIENT } from '../core/svg.ts';
  * Themes with `titleStyle: bar` draw it like a slide-template cover
  * instead: a vertical bar, a heavy headline, the eyebrow as a light second line
  * and the subtitle below, left-aligned, over the theme's `titleBackdrop`.
+ * With `titleStyle: burst` (comic) the headline pops out of a starburst.
  */
 export const title = defineWidget({
   type: 'title',
@@ -21,8 +22,9 @@ export const title = defineWidget({
     const centered = p.align !== 'start';
     const anchor = centered ? 'middle' : 'start';
     const lines = str(p.text).split('\n');
-    const ls = -s * 0.02; // tight headline tracking
-    const widths = lines.map((l) => rc.measure(l, s, false, 800, ls));
+    const ls = s * +(rc.theme.titleTracking ?? -0.02);
+    const font = rc.theme.fontTitle || rc.theme.fontSans;
+    const widths = lines.map((l) => rc.measure(l, s, false, 800, ls, font));
     const eyebrow = str(p.eyebrow).toUpperCase();
     const capSize = Math.max(14, s * 0.21);
     const cap = captionAttrs(rc, capSize, p.color);
@@ -48,21 +50,37 @@ export const title = defineWidget({
       y += s * 0.42;
     }
 
+    // comic covers: the headline over a starburst, which replaces the accent bar
+    const burst = rc.theme.titleStyle === 'burst';
+    let burstBottom = 0;
+    if (burst) {
+      const ry = s * (0.5 + 0.52 * (lines.length - 1)) + s * 0.8;
+      const rx = Math.max(...widths) / 2 + s * 0.8;
+      // the spikes reach 12% past the ellipse: keep them clear of the eyebrow
+      y += ry * 1.12 - s * 0.56;
+      const cy = y + s * 0.56 + (lines.length - 1) * s * 0.52;
+      nodes.unshift(starburst(centered ? x : Math.max(...widths) / 2, cy, rx, ry, rc.color('accent2', 'accent2'), rc.theme.ink ?? rc.theme.fg));
+      burstBottom = cy + ry * 1.12;
+    }
+
     lines.forEach((l, i) => {
       y += s * (i ? 1.05 : 0.92);
-      const attrs = { 'font-size': s, 'font-family': rc.theme.fontSans, 'font-weight': 800, 'letter-spacing': ls, 'text-anchor': anchor };
+      const attrs = { 'font-size': s, 'font-family': font, 'font-weight': 800, 'letter-spacing': ls, 'text-anchor': anchor };
       if (bool(p.halo))
         nodes.push(h.text(`halo${i}`, x, y, l, { ...attrs, fill: accent, opacity: 0.38, filter: HALO_FILTER }, { enter: 'fade', delay: 0.3 }));
       nodes.push(h.text(`h${i}`, x, y, l, { ...attrs, fill: bool(p.gradient) ? TITLE_GRADIENT : rc.theme.fg }, { enter: 'slide-up', delay: 0.12 + i * 0.08 }));
     });
 
-    y += s * 0.42;
-    const barW = Math.max(80, s * 1.3);
-    const bx = centered ? x - barW / 2 : 0;
-    nodes.push(
-      h.path('barglow', `M${bx} ${y} L${bx + barW} ${y}`, { stroke: accent, 'stroke-width': 8, 'stroke-linecap': 'round', filter: HALO_FILTER, opacity: 0.8, fill: 'none' }, { enter: 'draw', delay: 0.35 }),
-      h.path('bar', `M${bx} ${y} L${bx + barW} ${y}`, { stroke: accent, 'stroke-width': 5, 'stroke-linecap': 'round', fill: 'none' }, { enter: 'draw', delay: 0.35 }),
-    );
+    if (burst) y = burstBottom - s * 0.15;
+    else {
+      y += s * 0.42;
+      const barW = Math.max(80, s * 1.3);
+      const bx = centered ? x - barW / 2 : 0;
+      nodes.push(
+        h.path('barglow', `M${bx} ${y} L${bx + barW} ${y}`, { stroke: accent, 'stroke-width': 8, 'stroke-linecap': 'round', filter: HALO_FILTER, opacity: 0.8, fill: 'none' }, { enter: 'draw', delay: 0.35 }),
+        h.path('bar', `M${bx} ${y} L${bx + barW} ${y}`, { stroke: accent, 'stroke-width': 5, 'stroke-linecap': 'round', fill: 'none' }, { enter: 'draw', delay: 0.35 }),
+      );
+    }
 
     if (p.subtitle) {
       y += s * 0.3 + subSize;
@@ -73,6 +91,19 @@ export const title = defineWidget({
     return nodes;
   },
 });
+
+/** A comic starburst centered at (cx, cy): spikes around an ellipse, irregular but the same every frame. */
+function starburst(cx: number, cy: number, rx: number, ry: number, fill: string, ink: string): RNode {
+  const spikes = 16;
+  const pts: string[] = [];
+  for (let i = 0; i < spikes * 2; i++) {
+    const a = (i / (spikes * 2)) * Math.PI * 2 - Math.PI / 2;
+    // outer points vary in length, inner ones sit at ~72%
+    const k = i % 2 ? 0.66 + 0.05 * Math.sin(i * 2.3) : 1 + 0.12 * Math.sin(i * 1.7);
+    pts.push(`${(cx + Math.cos(a) * rx * k).toFixed(1)},${(cy + Math.sin(a) * ry * k).toFixed(1)}`);
+  }
+  return { key: 'burst', tag: 'polygon', attrs: { points: pts.join(' '), fill, stroke: ink, 'stroke-width': 3, 'stroke-linejoin': 'round' }, enter: 'pop' };
+}
 
 /** Slide-template cover: | Heavy headline / Light second line / name line, left-aligned. */
 function barTitle(p: Record<string, any>, rc: RenderCtx): RNode[] {

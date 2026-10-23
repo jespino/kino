@@ -1,0 +1,15 @@
+{
+	"fixed": {
+		"file_version": "0.1.0"
+	},
+	"info": {
+		"0409": {
+			"ProductVersion": "0.1.0",
+			"CompanyName": "Jesús Espino",
+			"FileDescription": "Describe explanatory animations as text, render them as video",
+			"LegalCopyright": "(c) 2026, Jesús Espino",
+			"ProductName": "Kino Studio",
+			"Comments": "This is a comment"
+		}
+	}
+}

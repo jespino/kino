@@ -3,6 +3,7 @@
 //   npm run render -- examples/go-slices.kino --png out/frame.png --at 3.5s
 //   npm run render -- my.kino --widgets ./my-widgets.ts      (custom widgets)
 //   npm run render -- my.kino --theme sketch                  (override the script's theme)
+//   npm run render -- my.kino -o out/my.pdf                   (slides as a PDF: a page per step and sub-step)
 // Frames are rasterized with resvg in parallel worker threads and piped to ffmpeg.
 import { spawn } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
@@ -11,11 +12,13 @@ import { dirname, basename, extname, resolve, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { Resvg } from '@resvg/resvg-js';
-import { collectNarration, compile, KinoError, type Movie, type NarrationRequest, type WidgetDef } from '../src/index.ts';
+import { collectNarration, compile, KinoError, type Movie, type NarrationRequest, type ProjectVoice, type WidgetDef } from '../src/index.ts';
 import { twemoji } from '../src/node/emoji.ts';
 import { loadImages } from '../src/node/images.ts';
 import type { ImageAsset } from '../src/index.ts';
 import { cachedClip, ensureAll, type CachedClip, type TtsConfig } from '../src/node/tts.ts';
+import { projectVoice } from '../src/node/settings.ts';
+import { buildPdf } from '../src/pdf.ts';
 
 interface Job {
   source: string;
@@ -26,6 +29,8 @@ interface Job {
   width: number;
   /** narration durations (ms) by clip id, so workers compute the same timeline */
   durations: Record<string, number>;
+  /** the project's voice settings (clip ids depend on them) */
+  voice: ProjectVoice;
 }
 
 async function loadWidgets(path?: string): Promise<WidgetDef<any>[]> {
@@ -52,6 +57,7 @@ if (!isMainThread) {
     images: (src) => job.images[src],
     widgets: await loadWidgets(job.widgets),
     emoji: twemoji,
+    voice: job.voice,
     narration: (r) => (job.durations[r.id] === undefined ? undefined : { duration: job.durations[r.id] }),
   });
   parentPort!.on('message', ({ frame, t }: { frame: number; t: number }) => {
@@ -72,7 +78,8 @@ async function main() {
     console.error(`usage: render <file.kino> [-o out.mp4|out.webm|out.gif] [--fps N] [--scale S] [--jobs N] [--widgets widgets.ts] [--theme sketch]
                      [--no-audio] [--tts http://127.0.0.1:8808]
        render <file.kino> --png out.png --at <2.5s | 1200ms>
-       render <file.kino> --svg out.svg --at <time>`);
+       render <file.kino> --svg out.svg --at <time>
+       render <file.kino> -o out.pdf [--scale S]`);
     process.exit(2);
   }
   const opt = (name: string) => {
@@ -86,15 +93,18 @@ async function main() {
   const theme = opt('--theme');
   const { assets: images, missing: missingImages } = await loadImages(source, dirname(resolve(input)));
   for (const m of missingImages) console.error(`image "${m.src}": ${m.reason} (drawn as a placeholder)`);
-  const stills = args.includes('--png') || args.includes('--svg');
+  const pdf = extname(opt('-o') ?? '') === '.pdf';
+  const stills = args.includes('--png') || args.includes('--svg') || pdf;
   const withAudio = !args.includes('--no-audio') && !stills;
   const tts: TtsConfig = { server: opt('--tts') };
+  // the project's provider and voice (kino.json next to the script) and the global default provider
+  const voice = projectVoice(dirname(resolve(input)));
 
   // narration: generate missing clips (cached in .kino-cache/tts), or reuse what's cached
   const clips = new Map<string, CachedClip>();
   let reqs: NarrationRequest[] = [];
   try {
-    reqs = collectNarration(source);
+    reqs = collectNarration(source, voice);
   } catch {} // syntax errors are reported by compile() below
   if (withAudio && reqs.length) {
     try {
@@ -116,7 +126,7 @@ async function main() {
 
   let movie: Movie;
   try {
-    movie = compile(source, { theme, images: (src) => images[src], widgets: await loadWidgets(widgets), emoji: twemoji, narration: (r) => clips.get(r.id) && { duration: clips.get(r.id)!.duration, url: clips.get(r.id)!.file } });
+    movie = compile(source, { theme, voice, images: (src) => images[src], widgets: await loadWidgets(widgets), emoji: twemoji, narration: (r) => clips.get(r.id) && { duration: clips.get(r.id)!.duration, url: clips.get(r.id)!.file } });
   } catch (e) {
     if (e instanceof KinoError) {
       console.error(`${input}:${e.message}`);
@@ -144,6 +154,19 @@ async function main() {
 
   const out = opt('-o') ?? `out/${basename(input, extname(input))}.mp4`;
   mkdirSync(dirname(out), { recursive: true });
+  if (pdf) {
+    // one picture per page: every step and sub-step, what Present mode stops on
+    // print resolution unless --scale says otherwise
+    const width = Math.round(movie.video.width * parseFloat(opt('--scale') ?? '2'));
+    const pages = movie.pages();
+    const images = pages.map((p, i) => {
+      process.stdout.write(`\rpage ${i + 1}/${pages.length}`);
+      return { image: raster(movie.pageSvg(p), width).asPng(), type: 'png' as const };
+    });
+    writeFileSync(out, await buildPdf(images, { title: basename(input, extname(input)), width: movie.video.width, height: movie.video.height }));
+    console.log(`\nwrote ${out} (${pages.length} pages: every step and sub-step)`);
+    return;
+  }
   const total = Math.max(1, Math.ceil((movie.duration / 1000) * fps));
   const ext = extname(out);
   const codec =
@@ -189,7 +212,7 @@ async function main() {
     };
     let flushing = Promise.resolve();
     for (let i = 0; i < jobs; i++) {
-      const w = new Worker(new URL(import.meta.url), { workerData: { source, widgets, theme, images, width: W, durations } satisfies Job });
+      const w = new Worker(new URL(import.meta.url), { workerData: { source, widgets, theme, images, width: W, durations, voice } satisfies Job });
       workers.push(w);
       w.on('error', fail);
       w.on('message', (msg: { ready?: boolean; frame?: number; buf?: ArrayBuffer }) => {

@@ -13,6 +13,7 @@ import { collectNarration, compile, extractEmojis, KinoError, type WidgetDef } f
 import { twemoji } from '../src/node/emoji.ts';
 import { loadImages } from '../src/node/images.ts';
 import { cachedClip } from '../src/node/tts.ts';
+import { projectVoice } from '../src/node/settings.ts';
 
 const args = process.argv.slice(2);
 const opt = (n: string) => (args.includes(n) ? args[args.indexOf(n) + 1] : undefined);
@@ -32,9 +33,10 @@ const { assets: images, missing: missingImages } = await loadImages(src, dirname
 
 let movie;
 try {
-  const reqs = collectNarration(src);
+  const voice = projectVoice(dirname(resolve(file)));
+  const reqs = collectNarration(src, voice);
   const cached = new Map(reqs.map((r) => [r.id, cachedClip(r)]));
-  movie = compile(src, { theme: opt('--theme'), images: (s) => images[s], widgets, emoji: twemoji, narration: (r) => cached.get(r.id) && { duration: cached.get(r.id)!.duration } });
+  movie = compile(src, { theme: opt('--theme'), voice, images: (s) => images[s], widgets, emoji: twemoji, narration: (r) => cached.get(r.id) && { duration: cached.get(r.id)!.duration } });
 } catch (e) {
   console.error(`✗ ${file}:${e instanceof KinoError ? e.message : e instanceof Error ? e.stack : e}`);
   process.exit(1);

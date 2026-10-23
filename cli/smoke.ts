@@ -2,14 +2,26 @@
 // plus a few targeted checks of DSL behaviour.
 import { readdirSync, readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
-import { collectNarration, compile, extractImages, imageAsset, imageSize, KinoError } from '../src/index.ts';
+import { collectNarration, compile, DEFAULT_TTS_MODEL, extractImages, imageAsset, imageSize, KinoError } from '../src/index.ts';
 import { gauge } from '../examples/widgets/gauge.ts';
 import { twemoji } from '../src/node/emoji.ts';
+import { Resvg } from '@resvg/resvg-js';
+import { PDFDocument } from 'pdf-lib';
+import { buildPdf } from '../src/pdf.ts';
 
 let failures = 0;
 function test(name: string, fn: () => void) {
   try {
     fn();
+    console.log(`ok   ${name}`);
+  } catch (e) {
+    failures++;
+    console.log(`FAIL ${name}\n     ${e instanceof Error ? e.message : e}`);
+  }
+}
+async function testAsync(name: string, fn: () => Promise<void>) {
+  try {
+    await fn();
     console.log(`ok   ${name}`);
   } catch (e) {
     failures++;
@@ -29,7 +41,7 @@ for (const f of readdirSync('examples').filter((f) => f.endsWith('.kino'))) {
   });
 }
 
-for (const theme of ['dark', 'light', 'sketch']) {
+for (const theme of ['dark', 'light', 'sketch', 'comic']) {
   test(`every example renders in the ${theme} theme`, () => {
     for (const f of readdirSync('examples').filter((f) => f.endsWith('.kino'))) {
       const movie = compile(readFileSync(`examples/${f}`, 'utf8'), { widgets: [gauge], emoji: twemoji, theme });
@@ -73,6 +85,22 @@ test('slide-template chrome: side bars, footer, and a title backdrop that does n
   assert.ok(x > 200 && x < 500, `headline at x=${x}`);
   // footer text can be overridden like any token
   assert.match(compile('video { theme: { base: light, footerRight: "kino.dev" } }\nframe {}').svgAt(0), />kino\.dev</);
+});
+
+test('comic theme: inked outlines, hard shadows, no blurs, halftone and a panel frame', () => {
+  const src = 'frame { t: title at center() { text: "Pow", eyebrow: "intro" } }\nframe (fade) { b: box at (100, 100) { text: x, glow: true }\n l: label at (100, 300) { text: "plain", size: 40 } }';
+  const m = compile(src, { theme: 'comic' });
+  const cover = m.svgAt(m.chapters[1].time - 1), page = m.svgAt(m.duration);
+  assert.match(cover, /<polygon [^>]*fill="#d7261e"/, 'title starburst');
+  assert.match(cover, /font-family="Bangers[^"]*"[^>]*stroke="#141414"[^>]*paint-order="stroke"[^>]*>Pow</, 'inked headline');
+  assert.doesNotMatch(page, /filter="url\(#kglow/, 'glows are hard rims, not blurs');
+  // the box casts a solid ink shadow just before itself
+  assert.match(page, /<rect [^>]*fill="#141414"[^>]*transform="translate\(6 6\)[^"]*"[^>]*\/><rect [^>]*stroke-width="3"/);
+  assert.match(page, /fill="url\(#kdots\)" mask="url\(#kdotsmask\)"/);
+  assert.match(page, /<path d="M[^"]+Z M[^"]+Z" fill="#fff4d6" fill-rule="evenodd"\/>/, 'paper gutter around the panel');
+  // black lettering stays plain
+  assert.match(page, /<text [^>]*>plain</);
+  assert.doesNotMatch(page, /stroke="#141414"[^>]*>plain</);
 });
 
 test('merge: ribbons from each source, pulses only during flow()', () => {
@@ -188,6 +216,31 @@ test('then splits a step into sequential transitions', () => {
   assert.equal(two.duration - one.duration, 500);
 });
 
+test('pages: one per step and sub-step', () => {
+  const m = compile('frame "a" { x: box }\nstep "b" { x.text = 1 then x.text = 2 }\nwait 1s\nsay "hello"\nstep "c" (cut) { x.text = 3 }');
+  assert.deepEqual(m.pages().map((p) => [p.beat, p.title]), [[1, 'a'], [2, 'b'], [3, 'b'], [4, 'c']]);
+  // both sub-steps of "b": its first state and the one after `then`
+  const [, b1, b2] = m.pages();
+  assert.match(m.pageSvg(b1), />1</);
+  assert.match(m.pageSvg(b2), />2</);
+  // a step that only plays an effect would repeat the last page: it shows the effect halfway instead
+  const fx = compile('video { transition: 800ms }\nframe { x: box { text: hi } }\nstep "boing" { x.bounce() }');
+  const [still, boing] = fx.pages();
+  assert.deepEqual([still.elapsed, boing.elapsed, boing.title], [0, 400, 'boing']);
+  assert.notEqual(fx.pageSvg(boing), fx.pageSvg(still));
+});
+
+await testAsync('pdf: one page per picture, the size of the video', async () => {
+  const m = compile('video { size: (640, 360) }\nframe { x: box { text: one } }\nstep { x.text = two }');
+  const pages = m.pages().map((p) => ({ image: new Resvg(m.pageSvg(p)).render().asPng(), type: 'png' as const }));
+  const bytes = await buildPdf(pages, { title: 'demo', width: 640, height: 360 });
+  assert.equal(new TextDecoder().decode(bytes.slice(0, 5)), '%PDF-');
+  const doc = await PDFDocument.load(bytes);
+  assert.equal(doc.getPageCount(), 2);
+  assert.deepEqual(doc.getPage(1).getSize(), { width: 640, height: 360 });
+  assert.equal(doc.getTitle(), 'demo');
+});
+
 test('slides: one beat per transition, holds and waits skipped', () => {
   const m = compile('video { transition: 500ms }\nframe { a: array }\nstep { a.push(1) then a.push(2) }\nwait 2s\nstep (cut) { a.push(3) }');
   assert.equal(m.beats.length, 4);
@@ -196,6 +249,44 @@ test('slides: one beat per transition, holds and waits skipped', () => {
   assert.match(m.slideSvgAt(4), />3</);
   assert.doesNotMatch(m.slideSvgAt(3), />3</);
   assert.ok(!/NaN|undefined/.test(m.slideSvgAt(1, 250)));
+});
+
+test('timeline: steps, sub-step transitions, element spans and marks', () => {
+  const src = `video { transition: 500ms, hold: 1000ms }
+frame "intro" { a: array }
+step "fill" (fade, back-out) {
+  a.push(1)
+then
+  b: box { text: x }
+  a.bounce()
+  camera.focus(b, 2)
+}
+wait 2s
+step "clean" (cut) {
+  remove b
+  camera.reset()
+}`;
+  const m = compile(src);
+  const { steps, elements, camera } = m.timeline;
+  assert.deepEqual(steps.map((s) => [s.kind, s.name, s.start, s.end]), [
+    ['frame', 'intro', 0, 1000],
+    ['step', 'fill', 1000, 3000],
+    ['wait', 'wait 2000ms', 3000, 5000],
+    ['step', 'clean', 5000, 6000],
+  ]);
+  assert.deepEqual(steps[1].transitions.map((t) => [t.start, t.end, t.kind, t.ease, t.line]), [
+    [1000, 1500, 'fade', 'back-out', 3],
+    [1500, 2000, 'fade', 'back-out', 5],
+  ]);
+  assert.equal(steps[3].transitions[0].end, 5000, 'cuts take no time');
+  const [a, b] = elements;
+  assert.deepEqual([a.name, a.type, a.line, a.spans], ['a', 'array', 2, [{ start: 0, end: 6000, enter: 0, exit: 0 }]]);
+  assert.deepEqual(a.marks.map((x) => [x.time, x.kind, x.label, x.line]), [
+    [1000, 'method', 'push()', 4],
+    [1500, 'effect', 'bounce()', 7],
+  ]);
+  assert.deepEqual([b.name, b.line, b.spans], ['b', 6, [{ start: 1500, end: 5000, enter: 500, exit: 0 }]]);
+  assert.deepEqual(camera.map((x) => [x.time, x.label]), [[1500, 'focus()'], [5000, 'reset()']]);
 });
 
 test('bare words work for string props and as references', () => {
@@ -253,6 +344,41 @@ say "hello there" (speaker: Jasper)`;
   assert.notEqual(b.id, c.id); // same speaker as a, but instruct differs
   assert.equal(collectNarration(src).length, 3);
   assert.match(errorAt('frame { say "x" (pitch: 3) }').message, /unknown voice setting 'pitch'/);
+});
+
+test('tts providers: hosted voices get their own clip ids, typos are errors', () => {
+  const m = compile(`frame { say "hi" }
+say "hi" (provider: local)
+say "hi" (provider: ElevenLabs, speaker: Rachel)`);
+  const [a, b, c] = m.narration.map((x) => x.request);
+  assert.equal(a.id, b.id); // local is the default, and stays out of the id
+  assert.equal(c.voice.provider, 'elevenlabs');
+  assert.notEqual(a.id, c.id);
+  assert.match(errorAt('frame { say "x" (provider: elevenlab) }').message, /unknown TTS provider 'elevenlab'/);
+});
+
+test('project voice: wins over the script header, not over later voice changes; old clip ids stay', () => {
+  const src = `video { voice: { speaker: Jasper, preset: expressive } }
+frame { say "hi" }
+say "hi" (provider: local, speaker: Luna)
+voice { speed: 1.2 }
+say "hi"`;
+  const voice = { settings: { provider: 'elevenlabs', speaker: 'Roger', model: '' }, defaultProvider: 'espeak' };
+  const [a, b, c] = compile(src, { voice }).narration.map((x) => x.request);
+  assert.equal(a.voice.provider, 'elevenlabs');
+  assert.equal(a.voice.speaker, 'Roger'); // the project's, not the header's Jasper
+  assert.equal(a.voice.preset, 'expressive'); // header settings the project doesn't set stay
+  assert.equal(a.voice.model, DEFAULT_TTS_MODEL); // empty project values don't count
+  assert.equal(b.voice.provider, 'local'); // per-line options win
+  assert.equal(b.voice.speaker, 'Luna');
+  assert.equal(c.voice.speed, '1.2');
+  assert.notEqual(a.id, c.id);
+  assert.deepEqual(collectNarration(src, voice).map((r) => r.id), [a.id, b.id, c.id]);
+  // Kino's default provider only applies when nobody names one
+  assert.equal(compile('frame { say "x" }', { voice: { defaultProvider: 'espeak' } }).narration[0].request.voice.provider, 'espeak');
+  assert.equal(compile('video { voice: { provider: openai } }\nframe { say "x" }', { voice: { defaultProvider: 'espeak' } }).narration[0].request.voice.provider, 'openai');
+  // the id this clip had before provider/speed existed: caches stay valid
+  assert.equal(compile('frame { say "hello" }', { voice: {} }).narration[0].request.id, '0ec44c441381700b6564633439c8');
 });
 
 test('memory: typed little/big-endian writes', () => {

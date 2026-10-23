@@ -40,7 +40,7 @@ is followed by an automatic pause (`hold`).
 |---|---|---|
 | `size` | `(1280, 720)` | or `width`, `height` |
 | `fps` | `30` | |
-| `theme` | `neon` | `neon` (navy, cyan glows), `sketch` (hand-drawn on paper), `dark`, `light`, or `{ base: sketch, accent: "#ff0", ... }` to override tokens. `render`/`check --theme <name>` and the studio's theme selector override it. |
+| `theme` | `neon` | `neon` (navy, cyan glows), `sketch` (hand-drawn on paper), `comic` (comic book: inked outlines, hard shadows, halftone dots), `dark`, `light`, or `{ base: sketch, accent: "#ff0", ... }` to override tokens. `render`/`check --theme <name>` and the studio's theme selector override it. |
 | `background` | theme `bg` | color or theme token |
 | `transition` | `700ms` | default step duration |
 | `hold` | `900ms` | default pause after each step |
@@ -188,7 +188,43 @@ Voice settings (in `video { voice: {...} }`, `voice {...}` or `say "..." (...)`)
 | `instruct` | an emotion applied to every line (`joyful`, `tender`, `stern`...; same as a leading `[tag]`). With a Qwen model: free-form style direction. |
 | `preset` | `stable` (default) or `expressive` |
 | `reference`, `referenceText` | voice cloning: a path to a 5–30s WAV of one speaker (relative to where you run kino), and optionally its transcript |
-| `model` | default `KittenML/kitten-tts-2`. `Qwen/...` models (Qwen3-TTS) also work if installed (`tts/setup.sh --with-qwen`). |
+| `model` | default `KittenML/kitten-tts-2`. `Qwen/...` models (Qwen3-TTS) also work if installed (`tts/setup.sh --with-qwen`). With a hosted provider: its model id (see below). |
+| `provider` | who speaks: `local` (the server above), `elevenlabs`, `openai`, `espeak` or `festival`. Usually chosen per project (see below), which wins over `video { voice }`; a `voice {}` block or `say (...)` option overrides it from there on. |
+| `speed` | speaking rate, `1` = normal (`1.2` faster, `0.8` slower). Every provider except `local` (Kitten has no rate control). |
+
+### Narration providers
+
+A project chooses who speaks its lines in **Settings → This project** in the studio, saved as
+`kino.json` in the project folder (the CLI reads it too, from the script's folder). It also holds
+the project's voice, which wins over the script's `video { voice }` (speaker and model names belong
+to one provider, so a header written for another one would break). Later `voice {}` blocks and
+`say "..." (...)` options still apply over it:
+
+```json
+{ "tts": { "provider": "elevenlabs", "voice": { "speaker": "Rachel", "model": "eleven_v3" } } }
+```
+
+A project without a provider uses Kino's default (**Settings → Kino**, `local` unless changed).
+
+| Provider | `speaker` | `model` (default) | Notes |
+|---|---|---|---|
+| `local` | Kitten voices (`Jasper`...) | `KittenML/kitten-tts-2` | The AI server above (`npm run tts`). Supports all the markup, emotions and voice cloning. |
+| `elevenlabs` | a voice name from your account (`Rachel`, `Sarah`...) or a voice id | `eleven_multilingual_v2`; also `eleven_v3`, `eleven_flash_v2_5`... | `eleven_v3` keeps leading `[emotion]` tags and turns `instruct` into one; other models get the text without markup. The language is detected from the text. `speed` 0.7–1.2. |
+| `openai` | `alloy` (default), `ash`, `coral`, `echo`, `fable`, `nova`, `onyx`, `sage`, `shimmer`... | `gpt-4o-mini-tts`; also `tts-1`, `tts-1-hd` | `instruct` is sent as free-form style direction. Any OpenAI-compatible server works through its URL. |
+| `espeak` | an espeak-ng voice: `en-us`, `es`, `en+f3`... (default: from `language`) | – | Classic, robotic, offline and instant. Needs `espeak-ng` installed (`apt install espeak-ng`, `brew install espeak-ng`). |
+| `festival` | a festival voice: `kal_diphone`, `cmu_us_slt_arctic_hts`... (default: festival's) | – | Classic, offline. Needs festival installed (`apt install festival`); kino runs its `text2wave`. |
+
+Kitten markup (`(((stress)))`, `<laugh>`) is stripped for the other providers, and voice cloning
+(`reference`) is local only: clone the voice in the provider and use it as the `speaker`.
+
+Provider credentials are global and never go in the script or the project: set them in
+**Settings → Kino**, saved in `~/.config/kino/config.json` (`~/Library/Application Support/kino/config.json`
+on macOS, `%AppData%\kino\config.json` on Windows, readable only by you). The same dialog sets the
+espeak/festival programs, the local server URL, a narration cache folder shared by all projects,
+and the MP4/PDF export quality. Environment variables win over the file: `ELEVENLABS_API_KEY`,
+`OPENAI_API_KEY`, `ELEVENLABS_BASE_URL`, `OPENAI_BASE_URL`, `KINO_TTS_URL`, `KINO_CACHE`.
+
+Clips are cached by text + voice + provider, so each line is generated (and billed) once.
 
 ## Emphasis actions
 
@@ -280,6 +316,7 @@ A syntax-highlighted code block. Lines are keyed by content, so assigning new
 An opening or section card: eyebrow caption between two rules, a big headline
 with a white→accent gradient and a soft halo, an accent bar that draws itself,
 and a subtitle. The parts come in one after another.
+In the `comic` theme the headline is lettered in Bangers with an ink outline and pops out of a red starburst (it replaces the accent bar).
 With `titleStyle: bar` the card is drawn like a slide template's cover: a vertical bar, a heavy headline, the `eyebrow` as a light second line, the `subtitle` below, left-aligned over the theme's `titleBackdrop` gradient (`backdrop: false` keeps the plain page, for section headers).
 `text` (headline, `\n` for several lines), `eyebrow`, `subtitle`, `size` (84), `align` (`center`|`start`), `color` (accent), `gradient` (true), `halo` (true). Its origin defaults to `center`.
 
@@ -309,7 +346,7 @@ step { heart.burst(14); party.burst(12, "✨"); like.float() }
 ### `image`
 A picture from a file or a URL: PNG, JPEG, GIF, WebP or SVG. Paths are relative
 to the `.kino` file (the CLI also tries the working directory; the studio looks
-in `examples/` and the project root). The picture is embedded in the frames, so
+in the project folder, the one holding the script). The picture is embedded in the frames, so
 previews, exported MP4s and CLI renders all match.
 - Props: `src`, `width`, `height` (give one and the other follows the aspect ratio; neither = natural size), `fit` (`contain`|`cover`|`fill`, when both are given), `border` (`true` or a color), `padding` (a mat around the picture, like a mounted photo), `rotate` (degrees), `label` (caption below), `labelSize`, `glow`.
 - Assigning `src` (or `img.set("other.png")`) crossfades to another picture.
