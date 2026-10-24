@@ -144,7 +144,7 @@ function Toolbar() {
 
 const EXPORTS = [
   { label: 'Video (MP4)', hint: 'Render the whole video, with narration', run: exportVideo, long: true },
-  { label: 'Web page (HTML)', hint: 'One self-contained file that plays the video or the slides in any browser', run: exportPage, long: true },
+  { label: 'Presentation (HTML)', hint: 'The slides as one self-contained file that presents in any browser', run: exportPage, long: true },
   { label: 'Slides (PDF)', hint: 'A page per step and sub-step', run: exportSlides, long: true },
   { label: 'Current frame (SVG)', hint: 'The frame at the playhead', run: exportFrame, long: false },
 ];
@@ -166,7 +166,7 @@ function ExportMenu() {
 
   return (
     <span className="export-menu" ref={box}>
-      <button className="primary" onClick={() => setOpen(!open)} disabled={!hasMovie} title="Export the video, a web page, the slides or a frame">
+      <button className="primary" onClick={() => setOpen(!open)} disabled={!hasMovie} title="Export the video, the presentation, the slides or a frame">
         {exporting ? 'Exporting…' : 'Export'} ▾
       </button>
       {open && (

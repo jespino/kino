@@ -122,11 +122,11 @@ npm run tts            # start the server on http://127.0.0.1:8808 (downloads th
   them into the video (AAC in MP4, Opus in WebM). `--no-audio` skips audio.
   `--tts <url>` points at another server.
 - The studio's **Export** menu: **Video (MP4)** also includes the narration
-  (Opus track). **Web page (HTML)** writes one self-contained file that plays in
-  any browser, offline: the engine, the script, the theme's fonts, pictures,
-  emoji and the narration track are all inline. It has a video mode (scrubber
-  with step marks, subtitles) and a slides mode (`s`), and takes deep links
-  (`#t=12.5`, `#slide=3`). **Slides (PDF)** exports the slides: a page for every step and every
+  (Opus track). **Presentation (HTML)** writes the slides as one self-contained
+  file that presents in any browser, offline, like Present mode (click or space
+  plays one transition, `f` fullscreen, `#slide=3` opens on slide 3): the
+  engine, the script, the theme's fonts, pictures and emoji are all inline,
+  without narration. **Slides (PDF)** exports the slides: a page for every step and every
   `then` sub-step (what Present mode stops on), without narration. A step that
   only plays effects (bursts, clicks, bounces) is shown halfway through them.
   **Current frame (SVG)** saves the frame at the playhead.

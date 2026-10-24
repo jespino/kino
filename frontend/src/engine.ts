@@ -256,15 +256,12 @@ export async function exportVideo() {
   }
 }
 
-/** The video as one self-contained HTML page (player, fonts, pictures and narration inline). */
+/** The slides as one self-contained HTML page (player, fonts, pictures and emoji inline). */
 export async function exportPage() {
-  if (!st().movie) return;
+  const movie = st().movie;
+  if (!movie) return;
   play(false);
   try {
-    const withVoice = await prepareAudio();
-    const movie = st().movie!;
-    st().setProgress('Mixing narration…');
-    const audio = withVoice ? await narration.mix(movie) : null;
     st().setProgress('Saving…');
     const { source, theme } = st();
     const emoji: Record<string, string> = {};
@@ -278,14 +275,10 @@ export async function exportPage() {
       if (img) images[src] = img;
     }
     const durations = Object.fromEntries(movie.narration.filter((c) => c.ready).map((c) => [c.request.id, c.duration]));
-    const { blob, withAudio } = await exportHtml(
-      selfContained(),
-      { title: st().project?.name || baseName(), source, theme: theme || undefined, voice: projectVoice(), narration: durations, emoji, images },
-      audio,
-    );
+    const blob = await exportHtml(selfContained(), { title: st().project?.name || baseName(), source, theme: theme || undefined, voice: projectVoice(), narration: durations, emoji, images });
     const saved = await saveFile(blob, `${baseName()}.html`);
     st().setProgress(null);
-    if (saved) st().showToast(withAudio || !movie.narration.length ? 'HTML exported.' : 'HTML exported without narration audio.');
+    if (saved) st().showToast('HTML exported.');
   } catch (e) {
     st().setProgress(null);
     st().showToast(`HTML export failed: ${errorText(e)}`);

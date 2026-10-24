@@ -24,9 +24,14 @@ export function Slides() {
     if (!mode) return;
     const el = root.current!;
     const movie = () => useStore.getState().movie!;
-    let beat = movie().beatAt(useStore.getState().time);
+    // beats already applied at time 0 (an opening frame that appears instantly)
+    // show the same picture as no beats: never go back before them
+    const first = () => movie().beatAt(0);
+    let beat = Math.max(first(), movie().beatAt(useStore.getState().time));
     /** start time (performance.now) of the transition into beat+1, while it plays */
     let animStart: number | null = null;
+    /** the pending animation frame of the running transition */
+    let raf = 0;
     let counterTimer = 0;
     let current: 'fullscreen' | 'window' = mode;
     let stopped = false;
@@ -35,7 +40,7 @@ export function Slides() {
       const m = movie();
       const elapsed = animStart === null ? 0 : performance.now() - animStart;
       stage.current!.innerHTML = m.slideSvgAt(Math.min(beat, m.beats.length), elapsed);
-      counter.current!.textContent = `${beat} / ${m.beats.length}`;
+      counter.current!.textContent = `${beat - first()} / ${m.beats.length - first()}`;
     };
     const flash = () => {
       counter.current!.classList.add('show');
@@ -52,20 +57,21 @@ export function Slides() {
       const b = movie().beats[beat];
       if (!b || performance.now() - animStart >= b.end - b.start) return finishBeat();
       draw();
-      requestAnimationFrame(tick);
+      raf = requestAnimationFrame(tick);
     };
     const advance = () => {
-      // a click during a transition completes it
-      if (animStart !== null) return finishBeat();
+      // a click during a transition completes it and starts the next one
+      if (animStart !== null) finishBeat();
       if (beat >= movie().beats.length) return flash();
       const b = movie().beats[beat];
       if (b.end <= b.start) return finishBeat(); // cut
       animStart = performance.now();
-      requestAnimationFrame(tick);
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(tick);
     };
     const goTo = (n: number) => {
       animStart = null;
-      beat = Math.max(0, Math.min(n, movie().beats.length));
+      beat = Math.max(first(), Math.min(n, movie().beats.length));
       draw();
       flash();
     };
@@ -103,7 +109,7 @@ export function Slides() {
       const k = e.key;
       if ([' ', 'ArrowRight', 'ArrowDown', 'PageDown', 'Enter', 'n'].includes(k)) advance();
       else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace', 'p'].includes(k)) goTo(animStart !== null ? beat : beat - 1);
-      else if (k === 'Home') goTo(0);
+      else if (k === 'Home') goTo(first());
       else if (k === 'End') goTo(movie().beats.length);
       else if (k === ']') goTo(chapterBeat(1));
       else if (k === '[') goTo(chapterBeat(-1));
