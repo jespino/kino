@@ -20,7 +20,7 @@ EXAMPLES := $(wildcard examples/*.kino)
 DEPS     := node_modules/.package-lock.json
 
 .DEFAULT_GOAL := help
-.PHONY: help install dev build serve app app-dev app-package typecheck test check sheet render render-silent pdf png svg \
+.PHONY: help deps run install uninstall dev build serve app app-dev app-package typecheck test check sheet render render-silent pdf png svg \
         render-all tts-setup tts clean clean-cache distclean
 
 help: ## Show this help
@@ -34,7 +34,17 @@ $(DEPS): package.json package-lock.json
 	npm install
 	@touch $@
 
-install: $(DEPS) ## Install npm dependencies
+deps: $(DEPS) ## Install npm dependencies
+
+run: ## Build Kino Studio and start it from the repo (PROJECT=folder or script opens one)
+	scripts/studio.sh build
+	./bin/kino $(PROJECT)
+
+install: ## Build Kino Studio and install it for your user (menu entry + `kino` command)
+	scripts/studio.sh install
+
+uninstall: ## Remove what `make install` installed
+	scripts/studio.sh uninstall
 
 # ---- studio ----
 # The studio is a desktop app (Wails 3): preview, timeline and an agent terminal

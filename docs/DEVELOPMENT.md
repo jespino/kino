@@ -62,7 +62,13 @@ saving exports. The UI talks to it through the Wails runtime in the app, or
 over HTTP (`kino serve`) in a browser, which is also how the UI is tested. The
 TTS server is a separate process (`npm run tts`).
 
+The studio builds with [Wails 3](https://v3.wails.io). `make install` installs
+the pinned `wails3` tool if it's missing; to build by hand:
+
 ```sh
+go install -tags gtk3 github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.33
+make app               # wails3 task build -> bin/kino, without installing it
+bin/kino [project]     # run it from the repo
 make app-dev           # wails3 task dev: the app with hot reload through Vite
 make app-package       # .deb/.rpm/AppImage on Linux, .app on macOS, installer on Windows
 make dev PROJECT=...   # the same UI in a browser: `kino serve` + Vite (http://127.0.0.1:5173)
