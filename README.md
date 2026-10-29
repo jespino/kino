@@ -1,386 +1,267 @@
 # Kino
 
-Describe explanatory animations as text and get a video out of them. Kino is
-aimed at concept animations: how slices work, a sorting algorithm, a code
-refactor, a UI walkthrough.
+**Write a short text file, get an animated explainer video.**
+
+Kino is for animations that explain technical ideas: how Go slices grow, how a
+sorting algorithm works, how a refactor changes some code, how to use a UI. You
+describe what is on screen and how it changes, and Kino animates everything
+in between.
 
 ![Kino Studio: preview, timeline and agent terminal](docs/images/studio.png)
 
+## What a script looks like
+
 ```kino
-frame "a slice is a header + a backing array" {
-  s: struct at (90, 170) { title: "s", fields: { ptr: "•", len: 0, cap: 4 } }
-  data: array at (470, 166) { label: "backing array", capacity: 4 }
-  ptr: s.ptr -> data[0]
+video { theme: sketch }
+
+frame "Some numbers" {
+  nums: array at center() { label: "nums", values: [5, 2, 8, 1] }
 }
 
-step "append(s, 1)" {
-  data.push(1)
-  s.len = 1
+step "Sort them" {
+  nums.sort()
 }
 
-step "grow" {
-  data2: array at below(data, 90) { capacity: 8 }
-then
-  data2.copyFrom(data)        // copies fly from the old array to the new one
-then
-  ptr.to = data2[0]           // the arrow re-routes smoothly
-  s { len: 5, cap: 8 }
+step "Point at the smallest" {
+  nums.highlight(0, good)
 }
 ```
 
-The full language reference is in [docs/DSL.md](docs/DSL.md). The examples are in [examples/](examples).
+That's a complete video. Reading it top to bottom:
 
-## Writing scripts with Claude Code
+- `video { ... }` holds settings for the whole video. Here it picks the
+  hand-drawn `sketch` look.
+- `frame` starts a scene. `nums: array ...` puts an array named `nums` in the
+  middle of the screen.
+- Each `step` changes the scene. You only say what the new state is
+  (`nums.sort()`); Kino animates the values sliding into place.
 
-The repo includes a project skill, `.claude/skills/kino/SKILL.md`, that teaches
-Claude Code the whole language, the authoring workflow and the house style. Ask
-for an explainer ("make a kino video explaining how hash maps resize") and
-Claude will:
-1. write the `.kino` file
-2. validate it with `npm run check`
-3. inspect a contact sheet (`npm run check -- file.kino --sheet out/sheet.png`)
-4. render it
+A few more things you'll use soon:
 
-You can also invoke it explicitly with `/kino`.
+- `then` inside a step splits it into smaller animations that play one after
+  another.
+- `a -> b` draws an arrow between two things, and it follows them when they move.
+- `say "..."` adds a spoken narration line (see [Narration](#narration)).
 
-## Look and themes
+The [examples](#examples) show much more, and every widget and option is in the
+[language reference](docs/DSL.md).
 
-| Theme | Look |
-|---|---|
-| `neon` (default) | Deep navy background with soft light blobs and a vignette, translucent panels, cyan and pink accents, glows on highlights. Inter + JetBrains Mono. `examples/registers.kino` shows it. |
-| `sketch` | Pencil and watercolor on paper: handwriting (Kino Hand: Patrick Hand plus arrows and check marks, built by `cli/gen-hand-font.ts`), thin graphite outlines drawn twice with overshooting corners, fills painted as uneven watercolor washes with darker edges, paper grain, and soft watercolor halos instead of glows. Code blocks use a hand-drawn monospace (Fantasque Sans Mono). `examples/columnar-compression.kino` uses it. |
-| `comic` | A comic book: newsprint paper with halftone dots and an inked panel frame, thick ink outlines with solid offset shadows, flat primary colors, Bangers lettering for headlines and captions (title cards burst out of a red starburst), Comic Neue for text. Glows become hard colored rims. |
-| `dark`, `light` | Plain, flat versions of the above. |
+## Install
 
-Pick one in the script with `video { theme: sketch }`, tweak tokens with
-`video { theme: { base: sketch, accent: "#c0392b" } }`, or override the
-script's theme from outside it:
+You need:
 
-```sh
-npm run render -- file.kino --theme sketch     # also: npm run check -- file.kino --theme sketch
-make render THEME=neon
-```
+- [Node.js](https://nodejs.org/) (a current LTS release)
+- [ffmpeg](https://ffmpeg.org/) on your `PATH`, to write video files
 
-In the studio, the theme selector in the header does the same (your choice is
-remembered).
-
-Besides colors, a theme sets fonts (`fontSans`, `fontMono`, `fontCaption` for
-captions, tabs and eyebrows, `fontCode` for code blocks, `fontTitle` and
-`titleTracking` for title-card headlines), `tint` (strength of
-highlight fills), `shade` (what a spotlight dims with) and the paper look:
-`roughness` (how far pencil strokes stray from the exact shape; `0` is crisp
-vector), `watercolor` (fills as washes), `paperGrain` (grain opacity) and
-`fauxBold` (bold for single-weight handwriting fonts). Slide-template themes also set `edgeLeft`/`edgeRight`/`edgeWidth` (gradient side
-bars), `footerLeft`/`footerCenter`/`footerRight` (footer texts; override them per
-script, e.g. `video { theme: { base: light, footerCenter: "KubeCon 2026" } }`),
-`titleStyle: bar` with `titleBackdrop` (cover-style title cards), `brandGradient`
-(the `brand` color) and `panelRadius`/`panelShadow` (white cards). Comic themes
-set `inkWidth` (outline width; glows become hard rims), `inkShadow` (offset of
-the solid shadows), `halftone`/`halftoneColor` (dots towards the edges),
-`frameBorder` (the panel frame) and `titleStyle: burst`. All of them
-live in [`src/core/theme.ts`](src/core/theme.ts).
-
-The paper look costs no SVG filters: when the SVG is written,
-[`src/core/sketch.ts`](src/core/sketch.ts) redraws each rect, line and circle
-as pencil strokes and washes, seeded by the shape's key so it keeps its look
-while it moves. The grain is a small pre-rendered tile (`cli/gen-grain.ts`)
-repeated over the frame. A sketch frame renders about as fast as a neon one.
-
-All fonts are bundled in `assets/fonts` (OFL). The CLI renderer, the live
-preview and the browser exporter use the same files, and text layout uses
-advance widths generated from them (`npx tsx cli/gen-metrics.ts`), so it's
-exact. To add a font, put its `.ttf` files there, list them in
-`cli/gen-metrics.ts` and `frontend/fonts.ts`, and regenerate the metrics.
-
-## Quick start
+Then, from the repo folder:
 
 ```sh
 npm install
-make app && bin/kino examples/go-slices.kino   # Kino Studio: preview, timeline, agent terminal (see below)
-npm run render -- examples/go-slices.kino -o out/go-slices.mp4
-npm run render -- examples/go-slices.kino --png out/frame.png --at 3.5s
-npm run render -- examples/go-slices.kino -o out/go-slices.pdf   # slides as a PDF: a page per step and sub-step
-npm run check -- file.kino      # validate: errors with line numbers, step timeline, narration status
-npm test                        # compiles + renders every example, plus DSL checks
 ```
 
-### Narration (text to speech)
+The desktop app (Kino Studio) and AI narration need a few more tools; their
+sections below explain how to set them up. You don't need them to make videos.
 
-`say "..."` lines are spoken by an AI voice: **[Kitten TTS 2](https://github.com/KittenML/KittenTTS)**
-(`KittenML/kitten-tts-2`), running on the GPU (CUDA or ROCm, CPU fallback) in a small local Python server.
-Kitten TTS 2 gives you 47 voices, emotion tags (`[joyful]`, `<laugh>`,
-`(((stress)))`), 20 languages and voice cloning from a short recording.
+## Make your first video
 
-```sh
-npm run tts:setup      # once: tts/.venv with Python 3.12, torch for your GPU (auto-detected) and kittenml
-npm run tts            # start the server on http://127.0.0.1:8808 (downloads the model, ~1 GB, on first run)
-```
+1. Save the script above as `hello.kino`.
+2. Check it for mistakes:
 
-- **Studio:** when you press Play, missing clips are generated (with progress),
-  cached, and then played in sync with the animation. While you edit, steps use
-  real durations for cached clips and estimates for the rest. The current line
-  is shown as a subtitle.
-- **CLI:** `npm run render` generates missing clips the same way and mixes
-  them into the video (AAC in MP4, Opus in WebM). `--no-audio` skips audio.
-  `--tts <url>` points at another server.
-- The studio's **Export** menu: **Video (MP4)** also includes the narration
-  (Opus track). **Presentation (HTML)** writes the slides as one self-contained
-  file that presents in any browser, offline, like Present mode (click or space
-  plays one transition, `f` fullscreen, `#slide=3` opens on slide 3): the
-  engine, the script, the theme's fonts, pictures and emoji are all inline,
-  without narration. **Slides (PDF)** exports the slides: a page for every step and every
-  `then` sub-step (what Present mode stops on), without narration. A step that
-  only plays effects (bursts, clicks, bounces) is shown halfway through them.
-  **Current frame (SVG)** saves the frame at the playhead.
-- **Cache:** `.kino-cache/tts/<hash>.wav`, keyed by the text and all voice
-  settings. The CLI and the studio share it. Delete a file to
-  regenerate that line.
-- Qwen3-TTS models still work as an alternative: run `tts/setup.sh --with-qwen`,
-  then set `voice: { model: "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice", speaker: Ryan }`.
-- **Other voices:** each project picks its narration provider in the studio's
-  **Settings → This project** (saved as `kino.json` next to the script): the local
-  Kitten server, **ElevenLabs** or **OpenAI** (hosted), or the classic **espeak-ng** and
-  **festival** synthesizers. API keys and programs are set once in **Settings → Kino**
-  (`~/.config/kino/config.json`). See [docs/DSL.md](docs/DSL.md#narration-providers).
-- `KINO_TTS_URL` and `KINO_CACHE` override the server and cache locations.
-  The server uses the GPU when torch sees one; `npm run tts -- --device cpu` forces CPU.
+   ```sh
+   npm run check -- hello.kino
+   ```
 
-In the studio, use Space to play or pause and ←/→ to jump between steps.
-Ctrl+Enter plays from the step under the cursor. Click an error to jump to
-its line.
+   It lists the steps and how long each one takes, or points at the line with
+   an error.
+3. Render it:
 
-### Presenting (slides mode)
+   ```sh
+   npm run render -- hello.kino -o out/hello.mp4
+   ```
 
-Press **Present** in the studio to show the animation fullscreen as slides, or
-**Window** next to it to show the slides filling the browser window without
-going fullscreen (handy when sharing a single window in a call, or to keep other
-windows around). It starts at the current position. Each click, Space, → or Enter plays exactly
-one transition (a `frame`, a `step` or a `then` sub-step) and then waits.
-Holds, `wait`s and narration pauses are skipped, and narration isn't played,
-so you can talk over it yourself. Pressing again during a transition finishes it.
+4. Open `out/hello.mp4`.
 
-| Key | Action |
+### Useful commands
+
+| Command | What it does |
 |---|---|
-| click, Space, →, ↓, Enter, PageDown | next transition |
-| ←, ↑, Backspace, PageUp, right-click | previous state (instant) |
-| `]` / `[` | next / previous whole step |
-| Home / End | first / last state |
-| `f` | switch between fullscreen and window |
-| Esc | leave (the studio jumps to the slide you were on) |
+| `npm run check -- file.kino` | Find errors (with line numbers) and list the steps |
+| `npm run check -- file.kino --sheet out/sheet.png` | Save a contact sheet: one picture per step |
+| `npm run render -- file.kino -o out/video.mp4` | Render a video (`.mp4`, `.webm` or `.gif`) |
+| `npm run render -- file.kino -o out/slides.pdf` | Render slides as a PDF, one page per step |
+| `npm run render -- file.kino --png out/frame.png --at 3.5s` | Save one frame as a picture |
+| `npm run render -- file.kino --theme comic` | Render with another theme |
+| `npm test` | Run the test suite |
 
-PDF pages are pictures of the slides at twice the video size (`--scale`
-changes it), so every theme looks exactly as in the video; each page is the
-size of the video in points. The studio stores pages as JPEG and the CLI as
-PNG, which is sharper but larger for paper-textured themes.
+The `Makefile` has shortcuts for the same commands; run `make` to list them.
 
-The CLI needs `ffmpeg` on the PATH. It writes `.mp4`, `.webm` or `.gif`
-depending on the extension, and renders frames in parallel.
+## Examples
+
+Each one is a `.kino` file in [`examples/`](examples). Render any of them the
+same way, e.g. `npm run render -- examples/bubble-sort.kino -o out/bubble.mp4`.
+
+| Example | Shows |
+|---|---|
+| [`go-slices.kino`](examples/go-slices.kino) | How Go slices work: a header pointing into a backing array |
+| [`bubble-sort.kino`](examples/bubble-sort.kino) | Pointers moving along an array while values swap |
+| [`code-morph.kino`](examples/code-morph.kino) | Code lines sliding to their new place after a change |
+| [`registers.kino`](examples/registers.kino) | What a CPU does to run `add`: registers, C source, disassembly |
+| [`simd-avx.kino`](examples/simd-avx.kino) | SIMD instructions on 256-bit registers |
+| [`bits-bytes-trees.kino`](examples/bits-bytes-trees.kino) | Float encoding, struct memory layout, a binary search tree |
+| [`columnar-compression.kino`](examples/columnar-compression.kino) | How log rows become compressed columns (with narration) |
+| [`tables-and-grids.kino`](examples/tables-and-grids.kino) | Sorting tables, highlighting matrices, camera moves |
+| [`ui-walkthrough.kino`](examples/ui-walkthrough.kino) | A cursor clicking a button and a checklist updating |
+| [`emoji-fun.kino`](examples/emoji-fun.kino) | Emoji and emphasis effects (bounce, shake, spin...) |
+| [`custom-widget.kino`](examples/custom-widget.kino) | Using a widget you wrote yourself |
 
 ## Kino Studio
 
-Kino Studio is a desktop app (built with [Wails 3](https://v3.wails.io)) for
-working on one animation at a time, laid out like a video editor:
+Kino Studio is a desktop app for working on one video at a time, laid out like
+a video editor:
 
-- **Preview** (top left): the animation at the playhead, with subtitles for
-  the narration and play/step/speed controls. Next to it, the **Source**
-  panel (Ctrl+2) edits the script; it is saved as you type.
-- **Timeline** (bottom): the movie as tracks. The *Steps* track shows every
-  `frame`, `step`, `say` and `wait`, with each transition (and `then`
-  sub-step) drawn over it: two crossed lines for a fade, one diagonal for a
-  morph, a marker for a cut. *Voice* shows the narration clips (dashed while
-  their length is still an estimate), *Camera* the camera moves, and below
-  them every element gets a row: a bar while it is on stage (fading in and out
-  over its enter and exit transitions) and a mark each time a step changes it
-  (◆ a property, ● a method call, ★ an effect such as `bounce()`). Click to
-  seek, double-click to jump to the line in the source, hover for details,
+- **Preview** (top left): plays the video, with subtitles for the narration.
+  The **Source** panel (Ctrl+2) next to it edits the script and saves as you
+  type.
+- **Timeline** (bottom): every step, narration clip, camera move and element
+  as tracks. Click to jump there; double-click to open that line in the source;
   Ctrl+wheel to zoom.
-- **Agent** (right): a terminal running your coding agent (Claude Code,
-  Codex, Gemini CLI, Antigravity) or a shell in the project folder.
+- **Agent** (right): a terminal running your coding agent (Claude Code, Codex,
+  Gemini CLI, Antigravity) or a plain shell, in the project folder.
 
-A **project** is a folder: a `.kino` script holds the whole animation, and the
-assets it references (pictures for `image`, voice recordings for cloning) live
-next to it. Open a folder (or a script) from the welcome screen, the project
-menu or the command line; start a new one empty or from an example; recent
-projects are remembered. The studio watches the script, so edits made by the
-agent or another editor show up at once. If the script stops compiling, the
-last good version keeps playing and the error points at its line.
+The studio reloads whenever the script changes on disk, so edits from your agent
+or your editor show up right away. If the script has an error, the last working
+version keeps playing and the error points at its line.
 
-When an agent starts, the studio writes the context it needs into the project:
-`AGENTS.md` (plus `CLAUDE.md`/`GEMINI.md` pointing to it), the DSL reference in
-`.kino/docs/DSL.md` and the skill in `.claude/skills/kino/`. After every compile
-it writes `.kino/status.json` (errors with `line:col`, the step timeline), which
-is how the agent checks its edits without the Node CLI. Narration clips are
-cached per project in `.kino-cache/` (`KINO_CACHE` overrides it).
+**Shortcuts:** Space plays or pauses, ←/→ jumps between steps, Ctrl+Enter plays
+from the step under the cursor. Click an error to jump to its line.
+
+### Build and run it
+
+The studio is a Go app built with [Wails 3](https://v3.wails.io). You need
+[Go](https://go.dev/dl/), and on Linux also `libgtk-3-dev` and
+`libwebkit2gtk-4.1-dev`.
 
 ```sh
 go install -tags gtk3 github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.33
-make app               # wails3 task build      -> bin/kino
-bin/kino [project]     # a folder holding a .kino script, or the script itself
-make app-dev           # wails3 task dev: the app with hot reload through Vite
-make app-package       # .deb/.rpm/AppImage on Linux, .app on macOS, installer on Windows
-make dev PROJECT=...   # the same UI in a browser: `kino serve` + Vite (http://127.0.0.1:5173)
+make app                              # builds bin/kino
+bin/kino examples/go-slices.kino      # open a script, or a folder that holds one
 ```
 
-The studio's backend is Go (`internal/app`): projects, the file watcher, the
-terminals, and the `/__kino/*` endpoints for narration audio, images and
-saving exports. The UI talks to it through the Wails runtime in the app, or
-over HTTP (`kino serve`) in a browser, which is also how the UI is tested. The
-TTS server is still a separate process (`npm run tts`).
+### Projects
 
-On Linux the app builds against GTK3 / WebKitGTK 4.1 (`libgtk-3-dev`,
-`libwebkit2gtk-4.1-dev`) through the `gtk3` build tag. To use Wails' default
-GTK4 / WebKitGTK 6.0 instead, install `libgtk-4-dev libwebkitgtk-6.0-dev` and
-build with `wails3 task build EXTRA_TAGS=` (and `GO_TAGS=` for `make dev`).
+A project is a folder with one `.kino` script plus the files it uses (pictures,
+voice recordings). Open one from the welcome screen, the project menu or the
+command line. New projects start empty or from a template: the examples are
+built in, and you can add your own to `~/.kino/templates` (a `<name>.kino`
+file, or a `<name>/` folder with the script and its files).
 
-## Prior art and what Kino borrows
+## Writing videos with an AI agent
 
-There's no industry-standard text format for this kind of animation. The
-nearest tools each cover only part of it:
+The repo includes a Claude Code skill (`.claude/skills/kino/SKILL.md`) that
+teaches Claude the whole language and how to check its work. Ask for an
+explainer, for example *"make a kino video explaining how hash maps resize"*,
+and Claude writes the `.kino` file, checks it, looks at a contact sheet and
+renders it. You can also run it with `/kino`.
 
-| Tool | What it is | What Kino takes from it |
-|---|---|---|
-| [Manim](https://www.manim.community/) | Python library for math animations (3Blue1Brown) | the "scene + animate changes" mental model |
-| [Motion Canvas](https://motioncanvas.io/), [Remotion](https://www.remotion.dev/) | TypeScript/React code → video | deterministic **time → frame** rendering, so the preview and the export match exactly |
-| [D2](https://d2lang.com/), [Mermaid](https://mermaid.js.org/) | text → static diagrams | the declaration syntax: `name: type { ... }` and `a -> b` connections |
-| Keynote Magic Move, [reveal.js auto-animate](https://revealjs.com/auto-animate/), [Shiki Magic Move](https://github.com/shikijs/shiki-magic-move) | animate between two slides by matching elements | **the core animation model**: keyed morphing between states |
-| CSS transitions | | durations (`600ms`), easing names (`ease-in-out`) |
+When you start an agent inside Kino Studio, the studio gives it the same
+knowledge automatically (it writes `AGENTS.md`, the language reference and the
+skill into the project).
 
-Manim and Motion Canvas are programming libraries: you write code that drives
-the animation. Kino is declarative. You describe **states** and the engine works
-out the motion. That keeps scripts short enough to write by hand or generate
-with an LLM.
+## Themes
 
-## How it works
-
-```
- .kino text ──► parser ──► AST ──► SceneBuilder ──► scene states (S0, S1, S2, ...)
-                                   (runs statements,      │  plain JSON: widgets + props + camera
-                                    widget methods)       ▼
-                                               Renderer / layout
-                                     (widget.render → keyed SVG primitives,
-                                      positions, anchors, relative layout)
-                                                          │  frames F0, F1, F2 ...
-                                                          ▼
-                    Movie.frameAt(t) = interpolate(Fi, Fi+1, ease(p))   ◄── timeline segments
-                                                          │
-                                         frameToSVG ──────┴──► browser <svg> / resvg → ffmpeg
-```
-
-- **States, not animations.** Each `step` produces a new scene state. Animation
-  happens only *between* states.
-- **Keyed primitives.** A widget renders to flat SVG primitives (`rect`, `text`,
-  `path`, ...), each with a `key`. Between two frames, nodes with the same key
-  tween all numeric attributes, colors and compatible paths. New keys play their
-  `enter` effect and vanished keys play their `exit` effect. Text changes
-  crossfade.
-- **Identity matters.** Array items, table rows and list items get stable ids,
-  so `swap`, `sort` and `insert` look like things moving rather than
-  re-rendering. Keys starting with `@` are global, which lets an item fly from
-  one widget to another. `origin` lets a new node start from an existing one,
-  which is how `copyFrom` works.
-- **Deterministic.** `movie.svgAt(t)` is a pure function of `t`. The browser
-  preview, the in-browser WebCodecs MP4 export and the Node renderer (resvg +
-  ffmpeg) all produce the same frames.
-
-```
-src/dsl/        lexer, parser, AST
-src/core/       values, scene (statement execution), render (layout), animate
-                (interpolation + effects), movie (timeline), timeline (steps and
-                element lifespans for the studio), svg, theme, text metrics
-src/widgets/    built-in widgets
-frontend/       Kino Studio UI (React + Vite): preview, timeline, source, agent terminal
-main.go         Kino Studio (Wails 3): embeds frontend/dist; `kino serve` for browsers
-internal/app/   studio backend: projects, file watching, narration/image endpoints
-internal/terminal/  agent terminals (PTYs)    internal/agentctx/  context files for agents
-internal/server/    HTTP adapter for `kino serve`
-build/          Wails build config, icons and packaging (Linux, macOS, Windows)
-cli/            render.ts (video/PNG/SVG), smoke.ts (tests)
-src/node/       TTS clip cache for the CLI (internal/app/studio.go uses the same layout)
-tts/            server.py (TTS HTTP server: Kitten TTS 2, optionally Qwen3-TTS), setup.sh
-examples/       .kino examples + widgets/gauge.ts (a custom widget)
-```
-
-## Built-in widgets
-
-`label`, `box`, `circle`, `button`, `array`, `struct`, `matrix`, `table`,
-`list`, `code`, `tabs`, `title`, `emoji`, `image`, `merge`, `tree`, `memory`, `bits`, `arrow`,
-`pointer`, `cursor`, `callout`, `brace`, `spotlight`, plus a built-in
-`camera`. Any widget can be wrapped in a captioned, optionally glowing panel
-with `panel: "Caption"`. Their
-properties, methods and anchors are listed in [docs/DSL.md](docs/DSL.md#widgets).
-
-## Writing your own widget
-
-A widget is a TypeScript object with:
-- default props
-- optional methods (the DSL verbs)
-- a `render` function that returns keyed SVG primitives in local coordinates
-
-Positioning, anchors for arrows, and all animation come from the engine.
-
-```ts
-import { defineWidget, h, values } from 'kino';   // or '../src/index.ts'
-
-export const gauge = defineWidget({
-  type: 'gauge',
-  defaults: { value: 0, label: '', r: 70, color: 'accent' },
-  methods: {
-    add(p, [n]) { p.value = Math.min(100, p.value + values.num(n)); },
-  },
-  render(p, rc) {
-    const c = p.r + 10, len = 2 * Math.PI * p.r;
-    return [
-      h.circle('track', c, c, p.r, { fill: 'none', stroke: rc.theme.surface, 'stroke-width': 14 }),
-      h.circle('arc', c, c, p.r, {
-        fill: 'none', stroke: rc.color(p.color, 'accent'), 'stroke-width': 14,
-        'stroke-dasharray': `${(len * p.value) / 100} ${len}`,   // tweened automatically
-        transform: `rotate(-90 ${c} ${c})`,
-      }),
-      h.text('value', c, c + 10, `${p.value}%`, { 'text-anchor': 'middle', fill: rc.theme.fg }),
-    ];
-  },
-  // optional: expose parts for arrows/pointers, e.g. `g.center`
-  // anchor(p, path, rc) { ... return rect }
-});
-```
-
-Then use it as `cpu: gauge at (200, 200) { value: 40 }` and `cpu.add(30)`.
-
-- **CLI:** `npm run render -- file.kino --widgets path/to/widgets.ts`. Every exported widget is registered.
-- **Studio:** add it to [`frontend/widgets.ts`](frontend/widgets.ts).
-- **Library:** `compile(source, { widgets: [gauge] })`.
-
-Widget API (see [`src/core/widget.ts`](src/core/widget.ts)):
-
-| Hook | Purpose |
+| Theme | Look |
 |---|---|
-| `defaults` | props and their types; string defaults make bare words act as strings |
-| `init(props, ctx)` | normalize after declaration (e.g. give items stable ids with `ctx.newId()`) |
-| `assign(props, path, value, ctx)` | custom handling of `w.x = v` / `w[i] = v` |
-| `methods` | `w.method(args)` |
-| `render(props, rc)` | primitives; `rc.color()`, `rc.measure()`, `rc.theme`, `rc.anchor(ref)`; helpers `glowRect()`, `captionAttrs()` for the house style |
-| `anchor(props, path, rc)` | local rect of a part (`w[2]`, `w.field`) for arrows, pointers and relative layout |
-| `overlay: true` | drawn in global coordinates from references (like `arrow`); ignores `at` |
-| `placed(props, rc, self)` | extra nodes in global coordinates once the widget is placed (`self.bbox`, `self.dx/dy`), e.g. particles flying in from other widgets (`merge` ribbons and pulses) |
+| `neon` (default) | Dark navy with glowing cyan and pink accents |
+| `sketch` | Pencil and watercolor on paper, handwritten text |
+| `comic` | Comic book: ink outlines, halftone dots, bold lettering |
+| `blueprint` | White line work on blue paper with a grid |
+| `whiteboard` | Marker doodles on a whiteboard |
+| `pixel` | 8-bit pixel art |
+| `paper-cut` | Layers of hand-cut paper with soft shadows |
+| `dark`, `light` | Plain and flat |
 
-Node extras: `enter`/`exit` effects, `origin` (start from another node's
-state), `transient` (only visible while appearing, used for click ripples),
-`delay` (0..1 fraction of the transition to wait before entering, for
-staggered entrances like the `title` card).
+Pick one with `video { theme: sketch }` in the script, `--theme sketch` on the
+command line, or the theme menu in the studio. You can also change single
+colors and fonts: `video { theme: { base: sketch, accent: "#c0392b" } }`.
+[docs/THEMES.md](docs/THEMES.md) has all the details.
 
-## Credits
+## Narration
 
-- Fonts: [Inter](https://rsms.me/inter/), [JetBrains Mono](https://www.jetbrains.com/lp/mono/), [Patrick Hand](https://fonts.google.com/specimen/Patrick+Hand) (Patrick Wagesreiter; extended as Kino Hand), [Lato](https://www.latofonts.com/) (Łukasz Dziedzic), [Fantasque Sans Mono](https://github.com/belluzj/fantasque-sans) (Jany Belluz), [Bangers](https://github.com/googlefonts/bangers) (Vernon Adams) and [Comic Neue](https://github.com/crozynski/comicneue) (Craig Rozynski), SIL Open Font License.
+`say "..."` lines are read aloud by an AI voice. By default that's
+[Kitten TTS 2](https://github.com/KittenML/KittenTTS), running on your machine
+(on the GPU if you have one). It has 47 voices, 20 languages, emotion tags like
+`[joyful]` and `<laugh>`, and can clone a voice from a short recording.
+
+Set it up once, then start the voice server whenever you work with narration:
+
+```sh
+npm run tts:setup      # once: installs Python 3.12, torch and the model into tts/.venv
+npm run tts            # starts the server (the first run downloads ~1 GB)
+```
+
+- **In the studio**, pressing Play generates any missing voice clips, then
+  plays them in sync with the animation.
+- **On the command line**, `npm run render` adds the narration to the video.
+  Use `--no-audio` to skip it.
+- **Other voices:** each project can use ElevenLabs or OpenAI (hosted), or
+  espeak-ng or festival (local) instead. Choose one in the studio under
+  **Settings → This project**, and enter API keys under **Settings → Kino**.
+  See [Narration providers](docs/DSL.md#narration-providers).
+
+<details>
+<summary>More narration details</summary>
+
+- Clips are cached in `.kino-cache/tts/<hash>.wav`, keyed by the text and all
+  voice settings. The CLI and the studio share the cache. Delete a file to
+  regenerate that line.
+- `--tts <url>` (CLI) or `KINO_TTS_URL` points at another server;
+  `KINO_CACHE` moves the cache.
+- `npm run tts -- --device cpu` forces the CPU.
+- Qwen3-TTS models work too: run `tts/setup.sh --with-qwen`, then set
+  `voice: { model: "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice", speaker: Ryan }`.
+- Project settings are saved as `kino.json` next to the script; app settings
+  in `~/.config/kino/config.json`.
+
+</details>
+
+## Exporting and presenting
+
+The studio's **Export** menu saves:
+
+- **Video (MP4)**, with narration.
+- **Presentation (HTML)**: one file that plays the slides in any browser, even
+  offline (click or Space for the next slide, `f` for fullscreen). No
+  narration.
+- **Slides (PDF)**: one page per step. No narration.
+- **Current frame (SVG)**: the picture at the playhead.
+
+To present live, press **Present** (fullscreen) or **Window** (fills the window,
+handy when sharing one window in a call). Each click or key press plays one
+animation and stops, and narration is muted, so you can talk over it.
+
+| Key | Action |
+|---|---|
+| click, Space, →, ↓, Enter, PageDown | next |
+| ←, ↑, Backspace, PageUp, right-click | back |
+| `]` / `[` | next / previous whole step |
+| Home / End | first / last |
+| `f` | switch between fullscreen and window |
+| Esc | leave (the studio jumps to where you were) |
+
+## Learn more
+
+- [docs/DSL.md](docs/DSL.md): the full language, every widget and its options.
+  The built-in widgets are `label`, `box`, `circle`, `button`, `array`,
+  `struct`, `matrix`, `table`, `list`, `code`, `tabs`, `title`, `emoji`,
+  `image`, `merge`, `tree`, `memory`, `bits`, `arrow`, `pointer`, `cursor`,
+  `callout`, `brace`, `spotlight` and `camera`.
+- [docs/THEMES.md](docs/THEMES.md): themes, every theme setting, fonts.
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md): how Kino works inside, the code
+  layout, writing your own widgets, and current limitations.
+
+## License and credits
+
+Kino is released under the [MIT license](LICENSE).
+
+- Fonts: [Inter](https://rsms.me/inter/), [JetBrains Mono](https://www.jetbrains.com/lp/mono/), [Patrick Hand](https://fonts.google.com/specimen/Patrick+Hand) (Patrick Wagesreiter; extended as Kino Hand), [Lato](https://www.latofonts.com/) (Łukasz Dziedzic), [Fantasque Sans Mono](https://github.com/belluzj/fantasque-sans) (Jany Belluz), [Bangers](https://github.com/googlefonts/bangers) (Vernon Adams), [Comic Neue](https://github.com/crozynski/comicneue) (Craig Rozynski), [Press Start 2P](https://fonts.google.com/specimen/Press+Start+2P) (Cody "CodeMan38" Boisclair), [VT323](https://fonts.google.com/specimen/VT323) (Peter Hull) and [Fredoka](https://github.com/hafontia-zz/Fredoka) (Milena Brandão; static instances cut from the variable font), SIL Open Font License.
 - Emoji artwork: [Twemoji](https://github.com/jdecked/twemoji) (`@twemoji/svg`). Graphics are licensed CC-BY 4.0; credit Twemoji when you publish videos that use them.
-
-## Current limitations and ideas
-
-- Text metrics cover Latin text in the bundled fonts. Other scripts and emoji
-  fall back to system fonts and estimated widths.
-- Numbers crossfade rather than count up. Per-statement timing within a step
-  is limited to `then` (no stagger or overlap offsets yet).
-- There's no background music track yet.
-- The studio's timeline is for reading and navigating: dragging a transition
-  to change its duration isn't supported yet. The source editor has
-  highlighting but no completion.
-- Grouping/nesting of widgets isn't supported yet. Images can't have rounded corners or masks.
