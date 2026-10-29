@@ -4,6 +4,8 @@ Describe explanatory animations as text and get a video out of them. Kino is
 aimed at concept animations: how slices work, a sorting algorithm, a code
 refactor, a UI walkthrough.
 
+![Kino Studio: preview, timeline and agent terminal](docs/images/studio.png)
+
 ```kino
 frame "a slice is a header + a backing array" {
   s: struct at (90, 170) { title: "s", fields: { ptr: "•", len: 0, cap: 4 } }
