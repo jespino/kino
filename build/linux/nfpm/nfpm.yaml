@@ -12,7 +12,7 @@ priority: "extra"
 maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
 description: "Describe explanatory animations as text, render them as video"
 vendor: "Jesús Espino"
-homepage: "https://wails.io"
+homepage: "https://github.com/jespino/kino"
 license: "MIT"
 release: "1"
 

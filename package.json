@@ -2,6 +2,7 @@
   "name": "kino",
   "version": "0.1.0",
   "description": "Describe explanatory animations as text, render them as video",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite frontend",
