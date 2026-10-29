@@ -3,7 +3,7 @@ import { parse } from '../dsl/parser.ts';
 import { WidgetRegistry } from '../widgets/index.ts';
 import { interpolate, still, type TransitionKind } from './animate.ts';
 import { easings, type Ease } from './easing.ts';
-import { Renderer, type Frame } from './render.ts';
+import { padView, Renderer, type Frame, type Padding } from './render.ts';
 import { emptyState, SceneBuilder, type SceneState } from './scene.ts';
 import { frameToSVG } from './svg.ts';
 import { DEFAULT_THEME, themes, type Theme } from './theme.ts';
@@ -27,6 +27,8 @@ export interface VideoConfig {
   /** pause after a step's narration ends (ms) */
   narrationHold: number;
   easing: string;
+  /** space kept clear around every slide: the picture is scaled down to fit inside it */
+  padding: Padding;
 }
 
 /** A narration clip placed on the timeline. */
@@ -173,7 +175,7 @@ export class Movie {
   /** Frame at time t (ms). */
   frameAt(t: number): Frame {
     const segs = this.segments;
-    if (!segs.length) return { nodes: [], view: { x: 0, y: 0, w: this.video.width, h: this.video.height } };
+    if (!segs.length) return { nodes: [], view: padView({ x: 0, y: 0, w: this.video.width, h: this.video.height }, this.video) };
     if (t >= this.duration) return still(segs[segs.length - 1].to);
     let lo = 0, hi = segs.length - 1;
     while (lo < hi) {
@@ -339,7 +341,39 @@ function videoConfig(items: Extract<Item, { t: 'video' }>[], themeOverride?: str
     hold: props.hold === undefined ? 900 : num(props.hold),
     narrationHold: props.narrationHold === undefined ? 400 : num(props.narrationHold),
     easing: props.easing === undefined ? 'ease-in-out' : str(props.easing),
+    padding: props.padding === undefined ? themePadding(theme, width, height) : padding(props.padding, width, height),
   };
+}
+
+/** The theme's `padding` token: fractions of the frame, CSS-like. */
+function themePadding(theme: Theme, width: number, height: number): Padding {
+  const f = theme.padding ? theme.padding.split(',').map((x) => Number(x.trim())) : [];
+  if (f.length > 4 || f.some((x) => !Number.isFinite(x))) throw new KinoError(`theme token 'padding' must be 1 to 4 fractions of the frame, got '${theme.padding}'`);
+  const p = padding(f.length ? f : undefined, 1, 1);
+  return { top: p.top * height, right: p.right * width, bottom: p.bottom * height, left: p.left * width };
+}
+
+/**
+ * `padding: 40`, CSS-like lists (`[v, h]`, `[top, h, bottom]`, `[top, right,
+ * bottom, left]`) or `{ top: 80, bottom: 60 }` (missing sides are 0).
+ */
+function padding(v: Value | undefined, width: number, height: number): Padding {
+  const usage = `'padding' takes a number, a list like [top, right, bottom, left], or { top, right, bottom, left }`;
+  let p: Padding;
+  if (v === undefined || v === null) p = { top: 0, right: 0, bottom: 0, left: 0 };
+  else if (typeof v === 'number') p = { top: v, right: v, bottom: v, left: v };
+  else if (Array.isArray(v) && v.length >= 1 && v.length <= 4) {
+    const [t, r = t, b = t, l = r] = v.map((x) => num(x, usage));
+    p = { top: t, right: r, bottom: b, left: l };
+  } else if (isObj(v)) {
+    const unknown = Object.keys(v).find((k) => !['top', 'right', 'bottom', 'left'].includes(k));
+    if (unknown) throw new KinoError(`unknown padding side '${unknown}' (top, right, bottom, left)`);
+    const side = (k: string) => (v[k] === undefined ? 0 : num(v[k], usage));
+    p = { top: side('top'), right: side('right'), bottom: side('bottom'), left: side('left') };
+  } else throw new KinoError(usage);
+  if (Object.values(p).some((x) => x < 0)) throw new KinoError(`'padding' can't be negative`);
+  if (p.left + p.right >= width || p.top + p.bottom >= height) throw new KinoError(`'padding' leaves no room on the ${width}×${height} canvas`);
+  return p;
 }
 
 function stepOptions(opts: Expr[], video: VideoConfig, firstFrame: boolean) {

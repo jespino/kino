@@ -185,13 +185,22 @@ func (a *App) CloseProject() {
 
 // NewProject creates dir (if needed) with <name>.kino holding source and an
 // assets/ folder, and opens it. It fails if the script already exists.
-func (a *App) NewProject(dir, name, source string) (*Project, error) {
+// template names a custom template (see Templates) to start from instead of
+// source; a folder template also brings its assets.
+func (a *App) NewProject(dir, name, source, template string) (*Project, error) {
 	if dir == "" {
 		return nil, errors.New("choose a folder for the project")
 	}
 	dir, err := filepath.Abs(expandHome(dir))
 	if err != nil {
 		return nil, err
+	}
+	var tmpl *Template
+	if template != "" {
+		if tmpl, err = customTemplate(template); err != nil {
+			return nil, err
+		}
+		source = tmpl.Source
 	}
 	if name == "" {
 		name = filepath.Base(dir)
@@ -206,6 +215,11 @@ func (a *App) NewProject(dir, name, source string) (*Project, error) {
 	}
 	if err := os.MkdirAll(filepath.Join(dir, "assets"), 0o755); err != nil {
 		return nil, err
+	}
+	if tmpl != nil {
+		if err := copyTemplateAssets(tmpl, dir); err != nil {
+			return nil, fmt.Errorf("copying the template: %w", err)
+		}
 	}
 	if source == "" {
 		source = projectTemplate(filepath.Base(dir))

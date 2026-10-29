@@ -16,6 +16,11 @@ import fantasqueBold from '../assets/fonts/FantasqueSansMono-Bold.ttf?url';
 import bangers from '../assets/fonts/Bangers-Regular.ttf?url';
 import comicRegular from '../assets/fonts/ComicNeue-Regular.ttf?url';
 import comicBold from '../assets/fonts/ComicNeue-Bold.ttf?url';
+import pressStart from '../assets/fonts/PressStart2P-Regular.ttf?url';
+import vt323 from '../assets/fonts/VT323-Regular.ttf?url';
+import fredokaRegular from '../assets/fonts/Fredoka-Regular.ttf?url';
+import fredokaSemiBold from '../assets/fonts/Fredoka-SemiBold.ttf?url';
+import fredokaBold from '../assets/fonts/Fredoka-Bold.ttf?url';
 
 const FONTS = [
   { family: 'Inter', weight: 400, url: interRegular },
@@ -37,6 +42,13 @@ const FONTS = [
   { family: 'Bangers', weight: 400, url: bangers },
   { family: 'Comic Neue', weight: 400, url: comicRegular },
   { family: 'Comic Neue', weight: 700, url: comicBold },
+  // pixel theme
+  { family: 'Press Start 2P', weight: 400, url: pressStart },
+  { family: 'VT323', weight: 400, url: vt323 },
+  // paper-cut theme
+  { family: 'Fredoka', weight: 400, url: fredokaRegular },
+  { family: 'Fredoka', weight: 600, url: fredokaSemiBold },
+  { family: 'Fredoka', weight: 700, url: fredokaBold },
 ];
 
 export async function loadFonts(): Promise<void> {

@@ -100,13 +100,14 @@ func newTestApp(t *testing.T) (*App, *events, string) {
 	root := t.TempDir()
 	recentFile = func() string { return filepath.Join(root, "config", "recent.json") }
 	configFile = func() string { return filepath.Join(root, "config", "config.json") }
+	templatesDir = func() string { return filepath.Join(root, "templates") }
 	for _, env := range []string{"KINO_CACHE", "KINO_TTS_URL", "ELEVENLABS_API_KEY", "ELEVENLABS_BASE_URL", "OPENAI_API_KEY", "OPENAI_BASE_URL"} {
 		t.Setenv(env, "")
 	}
 	ev := &events{}
 	a := New(ev.emit, agentctx.Docs{})
 	t.Cleanup(a.Shutdown)
-	if _, err := a.NewProject(filepath.Join(root, "project"), "talk", "frame { a: box }\n"); err != nil {
+	if _, err := a.NewProject(filepath.Join(root, "project"), "talk", "frame { a: box }\n", ""); err != nil {
 		t.Fatal(err)
 	}
 	ev.wait(t, EventProject)
@@ -122,7 +123,7 @@ func TestProjects(t *testing.T) {
 	if st, err := os.Stat(filepath.Join(dir, "assets")); err != nil || !st.IsDir() {
 		t.Fatal("no assets folder")
 	}
-	if _, err := a.NewProject(dir, "talk", ""); err == nil {
+	if _, err := a.NewProject(dir, "talk", "", ""); err == nil {
 		t.Fatal("created over an existing script")
 	}
 	// a folder with one script opens it; with two it needs project.kino or a choice
@@ -147,6 +148,52 @@ func TestProjects(t *testing.T) {
 	a.CloseProject()
 	if a.CurrentProject() != nil {
 		t.Fatal("still open")
+	}
+}
+
+func TestTemplates(t *testing.T) {
+	a, _, dir := newTestApp(t)
+	tdir := templatesDir()
+	if v := a.Templates(); v.Dir != tdir || len(v.Templates) != 0 {
+		t.Fatalf("no templates folder: %+v", v)
+	}
+	// a script, a folder with its assets, and things that aren't templates
+	os.MkdirAll(filepath.Join(tdir, "deck", "assets"), 0o755)
+	os.MkdirAll(filepath.Join(tdir, "deck", ".kino"), 0o755)
+	os.MkdirAll(filepath.Join(tdir, "empty"), 0o755)
+	os.WriteFile(filepath.Join(tdir, "intro.kino"), []byte("frame { intro: box }\n"), 0o644)
+	os.WriteFile(filepath.Join(tdir, "notes.txt"), []byte("not a template"), 0o644)
+	os.WriteFile(filepath.Join(tdir, "deck", "deck.kino"), []byte("frame { deck: box }\n"), 0o644)
+	os.WriteFile(filepath.Join(tdir, "deck", "kino.json"), []byte(`{"tts":{"provider":"espeak"}}`), 0o644)
+	os.WriteFile(filepath.Join(tdir, "deck", "assets", "logo.png"), []byte("png"), 0o644)
+	os.WriteFile(filepath.Join(tdir, "deck", ".kino", "status.json"), []byte("{}"), 0o644)
+	v := a.Templates()
+	if len(v.Templates) != 2 || v.Templates[0].Name != "deck" || !v.Templates[0].Folder || v.Templates[1].Name != "intro" || v.Templates[1].Folder {
+		t.Fatalf("templates: %+v", v.Templates)
+	}
+
+	p, err := a.NewProject(filepath.Join(filepath.Dir(dir), "fromdeck"), "", "ignored", "deck")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Source != "frame { deck: box }\n" || p.Path != filepath.Join(p.Dir, "fromdeck.kino") || p.Settings.TTS.Provider != "espeak" {
+		t.Fatalf("project from a folder template: %+v", p)
+	}
+	if b, err := os.ReadFile(filepath.Join(p.Dir, "assets", "logo.png")); err != nil || string(b) != "png" {
+		t.Fatalf("asset not copied: %v", err)
+	}
+	for _, f := range []string{"deck.kino", filepath.Join(".kino", "status.json")} {
+		if _, err := os.Stat(filepath.Join(p.Dir, f)); err == nil {
+			t.Fatalf("%s copied", f)
+		}
+	}
+	if p, err := a.NewProject(filepath.Join(filepath.Dir(dir), "fromintro"), "", "", "intro"); err != nil || p.Source != "frame { intro: box }\n" {
+		t.Fatalf("project from a script template: %+v %v", p, err)
+	}
+	for _, bad := range []string{"missing", "../templates/intro", "notes.txt"} {
+		if _, err := a.NewProject(filepath.Join(filepath.Dir(dir), "bad"), "", "", bad); err == nil {
+			t.Fatalf("template %q accepted", bad)
+		}
 	}
 }
 

@@ -23,6 +23,11 @@ const FONTS: [string, number, string][] = [
   ['Bangers', 400, 'Bangers-Regular.ttf'],
   ['Comic Neue', 400, 'ComicNeue-Regular.ttf'],
   ['Comic Neue', 700, 'ComicNeue-Bold.ttf'],
+  ['Press Start 2P', 400, 'PressStart2P-Regular.ttf'],
+  ['VT323', 400, 'VT323-Regular.ttf'],
+  ['Fredoka', 400, 'Fredoka-Regular.ttf'],
+  ['Fredoka', 600, 'Fredoka-SemiBold.ttf'],
+  ['Fredoka', 700, 'Fredoka-Bold.ttf'],
 ];
 const EXTRA = '•·→←↑↓✓✗…—–“”‘’×÷≤≥≠°€£¡¿áéíóúñçüö²³';
 const chars = [...Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i)), ...EXTRA];

@@ -41,7 +41,7 @@ for (const f of readdirSync('examples').filter((f) => f.endsWith('.kino'))) {
   });
 }
 
-for (const theme of ['dark', 'light', 'sketch', 'comic']) {
+for (const theme of ['dark', 'light', 'sketch', 'comic', 'blueprint', 'whiteboard', 'pixel', 'paper-cut']) {
   test(`every example renders in the ${theme} theme`, () => {
     for (const f of readdirSync('examples').filter((f) => f.endsWith('.kino'))) {
       const movie = compile(readFileSync(`examples/${f}`, 'utf8'), { widgets: [gauge], emoji: twemoji, theme });
@@ -85,6 +85,57 @@ test('slide-template chrome: side bars, footer, and a title backdrop that does n
   assert.ok(x > 200 && x < 500, `headline at x=${x}`);
   // footer text can be overridden like any token
   assert.match(compile('video { theme: { base: light, footerRight: "kino.dev" } }\nframe {}').svgAt(0), />kino\.dev</);
+});
+
+test('blueprint theme: a drafting grid and a drawing border', () => {
+  const m = compile('video { theme: blueprint }\nframe { a: box { text: x } }');
+  const svg = m.svgAt(0);
+  assert.match(svg, /<pattern id="kgrid" width="120" height="120" patternUnits="userSpaceOnUse">/);
+  assert.match(svg, /<rect [^>]*fill="url\(#kgrid\)"\/>/);
+  assert.match(svg, /fill="none" stroke="#eaf4ff" stroke-width="2"/, 'drawing border');
+  // other themes have no grid
+  assert.doesNotMatch(compile('frame {}').svgAt(0), /kgrid/);
+});
+
+test('whiteboard theme: a doodle in black pen, felt-marker fills, dashed highlights, a board frame', () => {
+  const m = compile('video { theme: whiteboard }\nframe { a: box { text: x, color: bad } }\nframe { t: title at center() { text: "Hi" } }');
+  const svg = m.svgAt(0);
+  // one pass: four sides, one pencil line each, in the black pen
+  const pen = /<path [^>]*d="(M[^"]+)"[^>]*stroke="([^"]+)" stroke-width="([\d.]+)"/.exec(svg)!;
+  assert.equal(pen[1].split('M').length - 1, 4);
+  assert.equal(pen[2], '#1c1d20');
+  assert.match(svg, /<linearGradient id="kboard"/);
+  // big colored lettering outlined in black
+  assert.match(m.svgAt(m.duration), /<text [^>]*font-family="Kino Hand[^"]*"[^>]*stroke="#1c1d20"[^>]*paint-order="stroke"/);
+  // colored fills laid flat; glows become a dashed loop
+  const hl = compile('video { theme: whiteboard }\nframe { a: array { values: [1, 2] } }\nstep { a.highlight(0, good) }');
+  const page = hl.svgAt(hl.duration);
+  assert.match(page, /<path [^>]*d="M[^"]+Z" fill="rgba\([^"]+\)" stroke="none"/, 'flat fill');
+  assert.match(page, /stroke-dasharray="9 8"/, 'dashed doodle');
+  assert.doesNotMatch(page, /kglow\)/);
+});
+
+test('pixel theme: square corners on the pixel grid, stepped circles, crisp edges, hard shadows', () => {
+  const m = compile('video { theme: pixel }\nframe { a: box at (101, 99) { text: x }\n c: circle at (400, 300) { r: 30, fill: accent } }');
+  const svg = m.svgAt(0);
+  assert.doesNotMatch(svg, /<rect [^>]*rx=/);
+  const r = /<rect x="([\d.]+)" y="([\d.]+)"[^>]*shape-rendering="crispEdges"/.exec(svg)!;
+  assert.deepEqual([+r[1] % 4, +r[2] % 4], [0, 0]);
+  assert.match(svg, /<path [^>]*d="M[\d.]+ [\d.]+(H[\d.]+V[\d.]+)+/, 'stepped circle');
+  assert.doesNotMatch(svg, /<circle /);
+  assert.match(svg, /fill="#0b0c14"[^>]*transform="translate\(4 4\)/, 'hard shadow');
+});
+
+test('paper-cut theme: hand-cut paper pieces with fibres and shadows, no outlines', () => {
+  const m = compile('video { theme: paper-cut }\nframe { a: box { text: x }\n t: title at center() { text: "Hi" } }');
+  const svg = m.svgAt(m.duration);
+  assert.match(svg, /<filter id="kcut"/);
+  // the box: its shadow, then a solid sheet with straight-snipped edges and no outline, then its fibres
+  assert.match(svg, /<path fill="#000000"[^>]*filter="url\(#kcut\)"\/><path fill="rgb\([^"]+\)" stroke="none"[^>]*d="M[\d.]+ [\d.]+ L[^"]+Z"\/><path fill="url\(#kgrain\)"/);
+  assert.doesNotMatch(svg, /<rect [^>]*fill="rgb/);
+  // the cut is the same every frame
+  assert.equal(compile('video { theme: paper-cut }\nframe { a: box { text: x } }').svgAt(0), compile('video { theme: paper-cut }\nframe { a: box { text: x } }').svgAt(0));
+  assert.match(svg, /font-family="Fredoka/);
 });
 
 test('comic theme: inked outlines, hard shadows, no blurs, halftone and a panel frame', () => {
@@ -379,6 +430,29 @@ say "hi"`;
   assert.equal(compile('video { voice: { provider: openai } }\nframe { say "x" }', { voice: { defaultProvider: 'espeak' } }).narration[0].request.voice.provider, 'openai');
   // the id this clip had before provider/speed existed: caches stay valid
   assert.equal(compile('frame { say "hello" }', { voice: {} }).narration[0].request.id, '0ec44c441381700b6564633439c8');
+});
+
+test('video padding: the picture is scaled to fit inside it, positions keep canvas coordinates', () => {
+  // 1280×720 with 100px left/right: scaled by 1080/1280, centered vertically
+  const m = compile('video { padding: [0, 100] }\nframe { a: box at (0, 0) }');
+  const f = m.frameAt(m.duration);
+  assert.deepEqual([f.nodes.find((n) => n.key === 'a/bg')!.attrs.x, f.nodes.find((n) => n.key === 'a/bg')!.attrs.y], [0, 0]);
+  const k = 1280 / 1080;
+  assert.deepEqual(f.view, { x: -100 * k, y: -(720 - 720 / k) / 2 * k, w: 1280 * k, h: 720 * k });
+  // a camera zoom is padded the same way, around what it shows
+  const z = compile('video { padding: [0, 100] }\nframe { a: box at (0, 0)\n camera.zoom = 2 }');
+  assert.ok(Math.abs(z.frameAt(z.duration).view.w - (1280 * k) / 2) < 1e-9);
+  assert.deepEqual([compile('video { padding: 30 }').video.padding, compile('video { padding: [10, 20] }').video.padding, compile('video { padding: { top: 70 } }').video.padding], [
+    { top: 30, right: 30, bottom: 30, left: 30 },
+    { top: 10, right: 20, bottom: 10, left: 20 },
+    { top: 70, right: 0, bottom: 0, left: 0 },
+  ]);
+  assert.throws(() => compile('video { padding: { up: 3 } }'), /unknown padding side 'up'/);
+  assert.throws(() => compile('video { padding: [700, 0] }'), /leaves no room/);
+  assert.throws(() => compile('video { padding: -5 }'), /negative/);
+  // themes can bring their own (fractions of the frame); the script's wins
+  assert.deepEqual(compile('video { theme: { base: light, padding: "0, 0.09" } }').video.padding, { top: 0, right: 1280 * 0.09, bottom: 0, left: 1280 * 0.09 });
+  assert.deepEqual(compile('video { theme: { base: light, padding: "0, 0.09" }, padding: 0 }').video.padding, { top: 0, right: 0, bottom: 0, left: 0 });
 });
 
 test('memory: typed little/big-endian writes', () => {

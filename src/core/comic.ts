@@ -15,7 +15,7 @@ const N = (v: string | number | undefined) => Number(v ?? 0);
 /** Smallest shape (px) that casts a shadow: dots and thin bars stay flat. */
 const MIN_SHADOW = 14;
 
-function opaqueFill(a: RNode['attrs']): boolean {
+export function opaqueFill(a: RNode['attrs']): boolean {
   const fill = a.fill === undefined ? '#000' : String(a.fill);
   if (fill === 'none' || fill === 'transparent') return false;
   const fo = a['fill-opacity'] === undefined ? 1 : N(a['fill-opacity']);
@@ -25,7 +25,7 @@ function opaqueFill(a: RNode['attrs']): boolean {
 }
 
 /** Whether the shape is big enough to cast a shadow (paths: assumed so). */
-function bigEnough(n: RNode): boolean {
+export function bigEnough(n: RNode): boolean {
   const a = n.attrs;
   if (n.tag === 'rect') return N(a.width) >= MIN_SHADOW && N(a.height) >= MIN_SHADOW;
   if (n.tag === 'circle') return N(a.r) * 2 >= MIN_SHADOW;
@@ -34,7 +34,7 @@ function bigEnough(n: RNode): boolean {
 }
 
 /** The same node, `off` px down and right, painted solid in ink. */
-function shadowOf(n: RNode, off: number, ink: string, attrs: RNode['attrs']): RNode {
+export function shadowOf(n: RNode, off: number, ink: string, attrs: RNode['attrs']): RNode {
   const t = attrs.transform ? ` ${attrs.transform}` : '';
   // a translation commutes with the transform-origin shift, so prepending it is enough
   return { ...n, key: n.key + ':shadow', attrs: { ...attrs, fill: ink, stroke: ink, 'fill-opacity': 1, transform: `translate(${off} ${off})${t}` } };

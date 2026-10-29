@@ -47,11 +47,12 @@ for UIs, `emoji-fun.kino` for emoji).
 ```kino
 video {
   size: (1920, 1080), fps: 30            // 1920x1080 for detailed scenes; default 1280x720
-  theme: neon                            // neon (default) | sketch (hand-drawn, paper) | comic (comic book) | dark | light | { base: neon, accent: "#ff0" }
+  theme: neon                            // neon (default) | sketch (hand-drawn, paper) | comic (comic book) | blueprint (engineering blueprint, drafting grid) | whiteboard (marker doodles) | pixel (8-bit) | paper-cut (layered paper) | dark | light | { base: neon, accent: "#ff0" }
   transition: 700ms, hold: 900ms         // default step animation / pause after each step
   narrationHold: 400ms                   // pause after a step's narration
   easing: ease-in-out
   voice: { speaker: Jasper }                // narration voice (Kitten TTS 2)
+  padding: [80, 40, 60, 40]              // optional: [top, right, bottom, left] kept clear on every slide; the whole picture is scaled to fit inside (coordinates don't change). Some themes bring their own
 }
 
 frame "title" (1500ms, ease-out, hold: 1800ms) {      // a FRESH scene (everything else disappears)

@@ -624,6 +624,15 @@ code {
   font-size: 13px;
   color: var(--text-muted);
 }
+.welcome-card h4 {
+  margin: 8px 0 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.welcome-card h4 + p {
+  margin: 0;
+}
 .example-grid {
   display: flex;
   flex-wrap: wrap;

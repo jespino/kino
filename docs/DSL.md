@@ -40,13 +40,14 @@ is followed by an automatic pause (`hold`).
 |---|---|---|
 | `size` | `(1280, 720)` | or `width`, `height` |
 | `fps` | `30` | |
-| `theme` | `neon` | `neon` (navy, cyan glows), `sketch` (hand-drawn on paper), `comic` (comic book: inked outlines, hard shadows, halftone dots), `dark`, `light`, or `{ base: sketch, accent: "#ff0", ... }` to override tokens. `render`/`check --theme <name>` and the studio's theme selector override it. |
+| `theme` | `neon` | `neon` (navy, cyan glows), `sketch` (hand-drawn on paper), `comic` (comic book: inked outlines, hard shadows, halftone dots), `blueprint` (engineering blueprint: blue paper, drafting grid, white line work), `whiteboard` (a marker doodle on a whiteboard), `pixel` (8-bit pixel art), `paper-cut` (layered cut paper with soft shadows), `dark`, `light`, or `{ base: sketch, accent: "#ff0", ... }` to override tokens. `render`/`check --theme <name>` and the studio's theme selector override it. |
 | `background` | theme `bg` | color or theme token |
 | `transition` | `700ms` | default step duration |
 | `hold` | `900ms` | default pause after each step |
 | `easing` | `ease-in-out` | default easing |
 | `voice` | `{ speaker: Jasper }` | default narration voice, see below |
 | `narrationHold` | `400ms` | pause after a step's narration ends |
+| `padding` | theme's | space kept clear around every slide, e.g. for a template's header, footer or side bars: `40` (all sides), `[top, right, bottom, left]` (CSS-like, also `[v, h]` and `[top, h, bottom]`) or `{ top: 80, bottom: 60 }`. The picture is scaled down evenly to fit inside it, centered; themes can bring their own, `padding: 0` turns it off. See [Positioning](#positioning). |
 
 ### Step options
 
@@ -128,6 +129,13 @@ Every non-overlay widget has `at` and `origin`:
 
 Changing `at` in a step moves the widget smoothly. The coordinate system is the
 video size, e.g. 1280×720.
+
+Padding (`video { padding }` or the theme's) doesn't change coordinates: you
+still lay out on the whole canvas, and the finished picture (camera included) is
+scaled down evenly to fit inside the padded area, centered. With
+`padding: [0, 100]` on 1280×720, the canvas is drawn at 1080×608 between x=100
+and x=1180. The background and the theme's chrome (side bars, footer) still fill
+the screen.
 
 ### Common properties (all widgets)
 

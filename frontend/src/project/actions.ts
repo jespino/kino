@@ -1,10 +1,10 @@
 // Project flows: native dialogs in the desktop app, the in-app folder
 // browser elsewhere (kino serve in a browser).
-import { api, errorText } from '../api.ts';
+import { api, errorText, type Template } from '../api.ts';
 import { useStore } from '../store.ts';
 
-/** The examples bundled with the studio, to start new projects from. */
-export const examples: { name: string; source: string }[] = Object.entries(
+/** The built-in templates: the examples bundled with the studio. */
+export const builtinTemplates: Template[] = Object.entries(
   import.meta.glob('../../../examples/*.kino', { query: '?raw', import: 'default', eager: true }) as Record<string, string>,
 )
   .map(([path, source]) => ({ name: path.split('/').pop()!.replace(/\.kino$/, ''), source }))
@@ -28,11 +28,22 @@ export function openProject(path: string) {
   });
 }
 
-/** Creates the project in dir (from the chosen example, if any). */
+/** The custom templates in ~/.kino/templates (none if the backend can't list them). */
+export async function customTemplates(): Promise<{ dir: string; templates: Template[] }> {
+  try {
+    const v = await api.templates();
+    return { dir: v.dir, templates: (v.templates ?? []).map((t) => ({ name: t.name, source: t.source, custom: true })) };
+  } catch {
+    return { dir: '', templates: [] };
+  }
+}
+
+/** Creates the project in dir (from the chosen template, if any). */
 export function createProject(dir: string, name = '') {
   const template = useStore.getState().template;
   return guarded(async () => {
-    await api.newProject(dir, name || template?.name || '', template?.source ?? '');
+    if (template?.custom) await api.newProject(dir, name || template.name, '', template.name);
+    else await api.newProject(dir, name || template?.name || '', template?.source ?? '');
     useStore.setState({ picker: null, template: null });
   });
 }
@@ -50,7 +61,7 @@ export function openProjectFlow() {
 }
 
 /** "New project…": choose or create the folder that will hold the script and its assets. */
-export function newProjectFlow(template: { name: string; source: string } | null = null) {
+export function newProjectFlow(template: Template | null = null) {
   useStore.setState({ template });
   return guarded(async () => {
     if (await hasNative()) {

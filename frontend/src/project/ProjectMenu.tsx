@@ -1,18 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, type RecentProject } from '../api.ts';
+import { api, type RecentProject, type Template } from '../api.ts';
 import { useStore } from '../store.ts';
-import { closeProject, examples, newProjectFlow, openProject, openProjectFlow } from './actions.ts';
+import { builtinTemplates, closeProject, customTemplates, newProjectFlow, openProject, openProjectFlow } from './actions.ts';
 
 /** Toolbar project name with New / Open / Recent / Close. */
 export function ProjectMenu() {
   const project = useStore((s) => s.project);
   const [open, setOpen] = useState(false);
   const [recent, setRecent] = useState<RecentProject[]>([]);
+  const [custom, setCustom] = useState<Template[]>([]);
   const box = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     if (!open) return;
     api.recentProjects().then((r) => setRecent(r ?? []), () => {});
+    customTemplates().then((v) => setCustom(v.templates));
     const close = (e: MouseEvent) => {
       if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
     };
@@ -26,6 +28,10 @@ export function ProjectMenu() {
     fn();
   };
   const others = recent.filter((r) => r.exists && r.path !== project?.path).slice(0, 8);
+  const templates: [string, Template[]][] = [
+    ['New from template', builtinTemplates],
+    ['New from your template', custom],
+  ];
   return (
     <span className="project-menu" ref={box}>
       <button className="link project-name" onClick={() => setOpen(!open)} title={project?.path}>
@@ -41,14 +47,21 @@ export function ProjectMenu() {
               {r.name}
             </button>
           ))}
-          {examples.length > 0 && <div className="menu-sep">New from example</div>}
-          <div className="menu-examples">
-            {examples.map((ex) => (
-              <button key={ex.name} onClick={pick(() => newProjectFlow(ex))}>
-                {ex.name}
-              </button>
-            ))}
-          </div>
+          {templates.map(
+            ([label, list]) =>
+              list.length > 0 && (
+                <div key={label}>
+                  <div className="menu-sep">{label}</div>
+                  <div className="menu-examples">
+                    {list.map((t) => (
+                      <button key={t.name} onClick={pick(() => newProjectFlow(t))}>
+                        {t.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ),
+          )}
           <div className="menu-sep" />
           <button onClick={pick(closeProject)}>Close project</button>
         </div>

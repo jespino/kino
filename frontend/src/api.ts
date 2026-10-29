@@ -60,6 +60,20 @@ export interface ProjectSettings {
   };
 }
 
+/** A template a new project starts from: built in (the bundled examples) or custom (~/.kino/templates). */
+export interface Template {
+  name: string;
+  source: string;
+  /** custom templates: the backend copies it (and a folder template's assets) by name */
+  custom?: boolean;
+}
+
+/** The custom templates in ~/.kino/templates. */
+export interface TemplatesView {
+  dir: string;
+  templates: { name: string; path: string; folder: boolean; source: string }[];
+}
+
 export interface RecentProject {
   path: string;
   name: string;
@@ -159,7 +173,9 @@ export const errorText = (e: unknown) => String(e instanceof Error ? e.message :
 export const api = {
   currentProject: () => call<Project | null>('CurrentProject'),
   openProject: (path: string) => call<Project>('OpenProject', path),
-  newProject: (dir: string, name: string, source: string) => call<Project>('NewProject', dir, name, source),
+  /** template: the name of a custom template to start from instead of source */
+  newProject: (dir: string, name: string, source: string, template = '') => call<Project>('NewProject', dir, name, source, template),
+  templates: () => call<TemplatesView>('Templates'),
   closeProject: () => call<void>('CloseProject'),
   recentProjects: () => call<RecentProject[] | null>('RecentProjects'),
   listDir: (path: string) => call<DirListing>('ListDir', path),

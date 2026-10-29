@@ -16,9 +16,34 @@ export interface Frame {
   view: Rect;
 }
 
+/** Space kept clear at each side of every slide (px). */
+export interface Padding {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
 export interface VideoInfo {
   width: number;
   height: number;
+  padding?: Padding;
+}
+
+/**
+ * Widens a camera view so that what it shows lands inside the padding on
+ * screen: scaled evenly to fit the padded area and centered in it. Chrome drawn
+ * relative to the view (backgrounds, side bars, footers) still fills the screen.
+ */
+export function padView(view: Rect, v: VideoInfo): Rect {
+  const p = v.padding;
+  if (!p || !(p.top || p.right || p.bottom || p.left)) return view;
+  const aw = v.width - p.left - p.right, ah = v.height - p.top - p.bottom;
+  const s = Math.min(aw / v.width, ah / v.height);
+  const ox = p.left + (aw - v.width * s) / 2, oy = p.top + (ah - v.height * s) / 2;
+  // view units per screen pixel
+  const k = view.w / (v.width * s);
+  return rect(view.x - ox * k, view.y - oy * k, v.width * k, v.height * k);
 }
 
 export class Renderer {
@@ -90,7 +115,7 @@ class Layout {
     const cam = this.state.camera;
     const c = cam.center === null ? { x: W / 2, y: H / 2 } : center(this.anchor(cam.center));
     const z = cam.zoom || 1;
-    return rect(c.x - W / z / 2, c.y - H / z / 2, W / z, H / z);
+    return padView(rect(c.x - W / z / 2, c.y - H / z / 2, W / z, H / z), this.video);
   }
 
   private inst(name: string): Instance {

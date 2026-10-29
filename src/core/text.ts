@@ -1,5 +1,6 @@
 // Text measurement without a DOM, from advance widths of the bundled fonts
-// (Inter, JetBrains Mono, Kino Hand, Fantasque Sans Mono, Lato, Bangers, Comic Neue; see cli/gen-metrics.ts).
+// (Inter, JetBrains Mono, Kino Hand, Fantasque Sans Mono, Lato, Bangers, Comic Neue,
+// Press Start 2P, VT323, Fredoka; see cli/gen-metrics.ts).
 // Layout is therefore exact and identical in the browser and in the Node renderer.
 import { CHARS, WIDTHS } from './metrics.ts';
 

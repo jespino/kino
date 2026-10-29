@@ -1,12 +1,26 @@
 import { useEffect, useState } from 'react';
-import { api, type RecentProject } from '../api.ts';
-import { examples, newProjectFlow, openProject, openProjectFlow } from './actions.ts';
+import { api, type RecentProject, type Template } from '../api.ts';
+import { builtinTemplates, customTemplates, newProjectFlow, openProject, openProjectFlow } from './actions.ts';
+
+function TemplateGrid({ templates }: { templates: Template[] }) {
+  return (
+    <div className="example-grid">
+      {templates.map((t) => (
+        <button key={t.name} className="small" onClick={() => newProjectFlow(t)} title={`New project from ${t.name}`}>
+          {t.name}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 /** Shown when no project is open. */
 export function Welcome() {
   const [recent, setRecent] = useState<RecentProject[]>([]);
+  const [custom, setCustom] = useState<{ dir: string; templates: Template[] }>({ dir: '', templates: [] });
   useEffect(() => {
     api.recentProjects().then((r) => setRecent(r ?? []), () => {});
+    customTemplates().then(setCustom);
   }, []);
   return (
     <div className="welcome">
@@ -34,17 +48,20 @@ export function Welcome() {
             </ul>
           </>
         )}
-        {examples.length > 0 && (
+        <h3>Start from a template</h3>
+        {builtinTemplates.length > 0 && (
           <>
-            <h3>Start from an example</h3>
-            <div className="example-grid">
-              {examples.map((ex) => (
-                <button key={ex.name} className="small" onClick={() => newProjectFlow(ex)} title={`New project with ${ex.name}.kino`}>
-                  {ex.name}
-                </button>
-              ))}
-            </div>
+            <h4>Built-in</h4>
+            <TemplateGrid templates={builtinTemplates} />
           </>
+        )}
+        <h4>Yours</h4>
+        {custom.templates.length > 0 ? (
+          <TemplateGrid templates={custom.templates} />
+        ) : (
+          <p className="muted small">
+            Put <code>.kino</code> scripts, or folders holding one with its assets, in <code>{custom.dir || '~/.kino/templates'}</code>.
+          </p>
         )}
       </div>
     </div>

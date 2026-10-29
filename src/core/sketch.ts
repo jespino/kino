@@ -5,6 +5,10 @@
 //   - fills: an irregular wash with darker, pooled edges plus a smaller, lighter
 //     inner wash, so the pigment is uneven
 //   - glows become a soft watercolor halo; blurred halos (text) are dropped
+// With `marker` > 0 (the `whiteboard` theme) it's a doodle on a whiteboard instead:
+// outlines drawn once with a thin black pen, that many px wide; colored fills
+// laid flat with a felt marker, a little off the outline; big colored lettering
+// outlined in black; glows become a dashed doodle loop around the shape.
 // Everything random is seeded by the node's key, so a shape keeps its look while
 // it moves or resizes instead of flickering from frame to frame.
 import { fmt } from './geometry.ts';
@@ -14,7 +18,7 @@ import type { Theme } from './theme.ts';
 import type { RNode } from './widget.ts';
 
 /** small deterministic PRNG (mulberry32) */
-function rng(seed: number) {
+export function rng(seed: number) {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) >>> 0;
@@ -25,13 +29,13 @@ function rng(seed: number) {
   };
 }
 
-function hash(s: string): number {
+export function hash(s: string): number {
   let h = 2166136261;
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
   return h;
 }
 
-type Pt = [number, number];
+export type Pt = [number, number];
 type Rand = () => number;
 const P = (p: Pt) => `${fmt(p[0])} ${fmt(p[1])}`;
 const N = (v: string | number | undefined) => Number(v ?? 0);
@@ -52,19 +56,19 @@ function pencilLine(a: Pt, b: Pt, amp: number, over: number, r: Rand): string {
   return `M${P(s)} Q${P(m)} ${P(e)}`;
 }
 
-/** A rectangle drawn side by side, twice. */
-function pencilRect(x: number, y: number, w: number, h: number, amp: number, r: Rand): string {
+/** A rectangle drawn side by side, `passes` times. */
+function pencilRect(x: number, y: number, w: number, h: number, amp: number, r: Rand, passes: number): string {
   const c: Pt[] = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
   const over = Math.min(4, Math.min(w, h) * 0.08);
   let d = '';
-  for (let pass = 0; pass < 2; pass++) for (let i = 0; i < 4; i++) d += pencilLine(c[i], c[(i + 1) % 4], amp, over, r) + ' ';
+  for (let pass = 0; pass < passes; pass++) for (let i = 0; i < 4; i++) d += pencilLine(c[i], c[(i + 1) % 4], amp, over, r) + ' ';
   return d.trim();
 }
 
-/** A rounded shape (pills, circles) as one wobbly loop, twice, slightly overlapping its start. */
-function pencilLoop(pts: Pt[], r: Rand, amp: number): string {
+/** A rounded shape (pills, circles) as one wobbly loop, `passes` times, slightly overlapping its start. */
+function pencilLoop(pts: Pt[], r: Rand, amp: number, passes: number): string {
   let d = '';
-  for (let pass = 0; pass < 2; pass++) {
+  for (let pass = 0; pass < passes; pass++) {
     const q = pts.map(([x, y]) => [x + jit(r, amp * 0.5), y + jit(r, amp * 0.5)] as Pt);
     d += smooth([...q, q[0], q[1]], false) + ' ';
   }
@@ -74,7 +78,7 @@ function pencilLoop(pts: Pt[], r: Rand, amp: number): string {
 // ---- outlines as point lists ----
 
 /** points around a (rounded) rect, roughly every `step` px */
-function rectPoints(x: number, y: number, w: number, h: number, rx: number, step: number): Pt[] {
+export function rectPoints(x: number, y: number, w: number, h: number, rx: number, step: number): Pt[] {
   const c = Math.max(0, Math.min(rx, w / 2, h / 2));
   const pts: Pt[] = [];
   const line = (ax: number, ay: number, bx: number, by: number) => {
@@ -96,7 +100,7 @@ function rectPoints(x: number, y: number, w: number, h: number, rx: number, step
   return pts;
 }
 
-function ellipsePoints(cx: number, cy: number, rx: number, ry: number): Pt[] {
+export function ellipsePoints(cx: number, cy: number, rx: number, ry: number): Pt[] {
   const n = Math.max(8, Math.min(28, Math.round((Math.PI * (rx + ry)) / 18)));
   return Array.from({ length: n }, (_, i) => [cx + Math.cos((i / n) * Math.PI * 2) * rx, cy + Math.sin((i / n) * Math.PI * 2) * ry] as Pt);
 }
@@ -136,7 +140,7 @@ const luminance = (c: [number, number, number, number]) => (0.2126 * c[0] + 0.71
 
 type Shape = { outline: Pt[]; pencil: string; bbox: [number, number, number, number] };
 
-function shapeOf(n: RNode, amp: number, r: Rand): Shape | null {
+function shapeOf(n: RNode, amp: number, r: Rand, passes = 2): Shape | null {
   const a = n.attrs;
   if (n.tag === 'rect') {
     const x = N(a.x), y = N(a.y), w = N(a.width), h = N(a.height);
@@ -145,13 +149,13 @@ function shapeOf(n: RNode, amp: number, r: Rand): Shape | null {
     // pills and big radii keep their roundness; ordinary corners become sharp pencil corners
     const round = rx >= Math.min(w, h) * 0.3;
     const outline = rectPoints(x, y, w, h, round ? rx : Math.min(rx, 3), 26);
-    return { outline, pencil: round ? pencilLoop(outline, r, amp) : pencilRect(x, y, w, h, amp, r), bbox: [x, y, w, h] };
+    return { outline, pencil: round ? pencilLoop(outline, r, amp, passes) : pencilRect(x, y, w, h, amp, r, passes), bbox: [x, y, w, h] };
   }
   if (n.tag === 'circle' || n.tag === 'ellipse') {
     const rx = N(n.tag === 'circle' ? a.r : a.rx), ry = N(n.tag === 'circle' ? a.r : a.ry);
     if (rx <= 0 || ry <= 0) return null;
     const outline = ellipsePoints(N(a.cx), N(a.cy), rx, ry);
-    return { outline, pencil: pencilLoop(outline, r, Math.min(amp, rx * 0.15)), bbox: [N(a.cx) - rx, N(a.cy) - ry, rx * 2, ry * 2] };
+    return { outline, pencil: pencilLoop(outline, r, Math.min(amp, rx * 0.15), passes), bbox: [N(a.cx) - rx, N(a.cy) - ry, rx * 2, ry * 2] };
   }
   if (n.tag === 'path') {
     // closed straight-edged shapes (custom polygons): each edge in pencil
@@ -172,7 +176,7 @@ function shapeOf(n: RNode, amp: number, r: Rand): Shape | null {
       for (let s = 0; s < steps; s++) outline.push([q[0] + ((nx[0] - q[0]) * s) / steps, q[1] + ((nx[1] - q[1]) * s) / steps]);
     });
     const over = Math.min(4, Math.min(bbox[2], bbox[3]) * 0.08);
-    for (let pass = 0; pass < 2; pass++) pts.forEach((q, i) => (pencil += pencilLine(q, pts[(i + 1) % pts.length], amp, over, r) + ' '));
+    for (let pass = 0; pass < passes; pass++) pts.forEach((q, i) => (pencil += pencilLine(q, pts[(i + 1) % pts.length], amp, over, r) + ' '));
     return { outline, pencil: pencil.trim(), bbox };
   }
   return null;
@@ -195,19 +199,40 @@ export function sketchNode(n: RNode, theme: Theme): RNode[] {
   const base = shared(a);
   const part = (suffix: string, tag: RNode['tag'], attrs: RNode['attrs']): RNode => ({ ...n, key: n.key + suffix, tag, attrs: { ...base, ...attrs } });
   const watercolor = +theme.watercolor > 0;
+  const marker = +theme.marker || 0;
+  /** marker stroke width for an outline `sw` px wide: thin rules stay thinner */
+  const markerWidth = (sw: number) => +(marker * Math.min(1.3, Math.max(0.6, sw / 2))).toFixed(2);
 
-  // glows and halos: no blurred light on paper
+  // glows and halos: no blurred light on paper; a whiteboard pen has no glow at all
   if (a.filter === HALO_FILTER) return [];
+  if (a.filter === GLOW_FILTER && marker > 0) {
+    // a dashed loop doodled around the shape in the glow's color
+    const s = shapeOf(n, amp, r, 1);
+    const c = rgba(String(a.stroke ?? a.fill ?? ''));
+    if (!s || !c) return [];
+    const [x, y, w, h] = s.bbox, pad = 9;
+    const loop = n.tag === 'circle' || n.tag === 'ellipse' ? ellipsePoints(x + w / 2, y + h / 2, w / 2 + pad, h / 2 + pad) : rectPoints(x - pad, y - pad, w + pad * 2, h + pad * 2, 14, 26);
+    return [part(':doodle', 'path', { d: pencilLoop(loop, r, amp, 1), fill: 'none', stroke: css([c[0], c[1], c[2]]), 'stroke-width': markerWidth(2), 'stroke-dasharray': '9 8', 'stroke-linecap': 'round' })];
+  }
   if (a.filter === GLOW_FILTER) {
     const s = shapeOf(n, amp, r);
     const c = rgba(String(a.stroke ?? a.fill ?? ''));
     if (!s || !c) return [];
     const [x, y, w, h] = s.bbox, pad = 7;
-    const halo = rectPoints(x - pad, y - pad, w + pad * 2, h + pad * 2, 12, 22);
+    // round shapes get a round halo
+    const halo = n.tag === 'circle' || n.tag === 'ellipse' ? ellipsePoints(x + w / 2, y + h / 2, w / 2 + pad, h / 2 + pad) : rectPoints(x - pad, y - pad, w + pad * 2, h + pad * 2, 12, 22);
     return [part(':halo', 'path', { d: blob(halo, 2.5, r), fill: css([c[0], c[1], c[2]], 0.22), stroke: 'none' })];
   }
 
   if (n.tag === 'text') {
+    // whiteboard: big colored lettering filled in and outlined with the black pen
+    if (marker > 0 && a.fill && a.stroke === undefined && N(a['font-size'] || 16) >= 40) {
+      const fill = String(a.fill), c = fill.startsWith('url(') ? null : rgba(fill);
+      if (!c || Math.max(c[0], c[1], c[2]) - Math.min(c[0], c[1], c[2]) > 60) {
+        const w = 0.075 * N(a['font-size']);
+        return [{ ...n, attrs: { ...a, stroke: theme.ink ?? theme.fg, 'stroke-width': +w.toFixed(2), 'stroke-linejoin': 'round', 'paint-order': 'stroke' } }];
+      }
+    }
     // one-weight handwriting fonts: fake the bold with an outline in the text color
     if (+theme.fauxBold > 0 && N(a['font-weight']) >= 750 && a.fill && a.stroke === undefined) {
       const size = N(a['font-size'] || 16);
@@ -219,15 +244,19 @@ export function sketchNode(n: RNode, theme: Theme): RNode[] {
   }
 
   if (n.tag === 'line') {
-    const d = pencilLine([N(a.x1), N(a.y1)], [N(a.x2), N(a.y2)], amp, 0, r) + ' ' + pencilLine([N(a.x1), N(a.y1)], [N(a.x2), N(a.y2)], amp, 0, r);
+    const line = () => pencilLine([N(a.x1), N(a.y1)], [N(a.x2), N(a.y2)], amp, 0, r);
+    const d = marker > 0 ? line() : line() + ' ' + line();
     const rest = Object.fromEntries(Object.entries(a).filter(([k]) => !GEOMETRY.includes(k)));
-    return [part('', 'path', { ...rest, d, fill: 'none', 'stroke-width': Math.min(N(a['stroke-width']) || 1.5, 2.2), 'stroke-linecap': 'round' })];
+    const sw = N(a['stroke-width']) || 1.5;
+    return [part('', 'path', { ...rest, d, fill: 'none', 'stroke-width': marker > 0 ? markerWidth(sw) : Math.min(sw, 2.2), 'stroke-linecap': 'round' })];
   }
 
-  const s = shapeOf(n, amp, r);
+  const s = shapeOf(n, amp, r, marker > 0 ? 1 : 2);
   if (!s) return [n];
   const rest = Object.fromEntries(Object.entries(a).filter(([k]) => !GEOMETRY.includes(k) && k !== 'fill' && k !== 'stroke' && k !== 'stroke-width' && k !== 'fill-opacity'));
   const out: RNode[] = [];
+  /** colored in: the color is in the fill, so the outline is the black pen */
+  let inked = false;
 
   const fill = a.fill === undefined ? '#000' : String(a.fill);
   const fc = fill === 'none' ? null : rgba(fill);
@@ -235,7 +264,25 @@ export function sketchNode(n: RNode, theme: Theme): RNode[] {
   if (fc && fc[3] * fo > 0.003) {
     const alpha = fc[3] * fo;
     const rgb: [number, number, number] = [fc[0], fc[1], fc[2]];
-    if (watercolor && luminance(fc) < 0.93) {
+    if (marker > 0 && luminance(fc) < 0.93) {
+      const [x, y, w, h] = s.bbox;
+      if (alpha < 0.9 && h <= 44 && w > h * 2.5) {
+        // a highlighter stroke along short, wide tints (a highlighted line of code)
+        const d = pencilLine([x + h * 0.42, y + h / 2], [x + w - h * 0.42, y + h / 2], Math.min(amp, 1.5), 0, r);
+        out.push(part(':highlighter', 'path', { ...rest, d, fill: 'none', stroke: css(rgb), 'stroke-width': +(h * 0.82).toFixed(2), 'stroke-opacity': Math.min(0.45, 0.2 + alpha), 'stroke-linecap': 'round' }));
+      } else {
+        // colored in with a felt marker: flat and bright (tints a lighter shade of the
+        // color), a little off the outline as when filling a doodle in by hand
+        const paper = rgba(theme.bg) ?? [255, 255, 255, 1];
+        const k = alpha >= 0.9 ? 1 : Math.min(1, 0.3 + alpha * 1.4);
+        const color = css([0, 1, 2].map((i) => rgb[i] * k + paper[i] * (1 - k)) as [number, number, number]);
+        const off = Math.min(4, Math.min(w, h) * 0.07), t = r() * Math.PI * 2;
+        const dx = Math.cos(t) * off, dy = Math.sin(t) * off;
+        const d = blob(s.outline.map(([px, py]) => [px + dx, py + dy] as Pt), Math.min(1.2, Math.min(w, h) * 0.04), r);
+        out.push(part(':fill', 'path', { ...rest, d, fill: color, stroke: 'none' }));
+        inked = true;
+      }
+    } else if (watercolor && luminance(fc) < 0.93) {
       // pigment: an irregular wash whose edge pools darker, and a lighter patch
       // inside where the paint dried thinner
       const [x, y, w, h] = s.bbox;
@@ -253,7 +300,9 @@ export function sketchNode(n: RNode, theme: Theme): RNode[] {
   }
 
   const stroke = a.stroke === undefined ? 'none' : String(a.stroke);
-  if (stroke !== 'none' && N(a['stroke-width'] ?? 1) > 0) {
+  if (stroke !== 'none' && N(a['stroke-width'] ?? 1) > 0 && marker > 0) {
+    out.push(part(':marker', 'path', { ...rest, d: s.pencil, fill: 'none', stroke: inked ? (theme.ink ?? theme.fg) : stroke, 'stroke-width': markerWidth(N(a['stroke-width'] ?? 1)), 'stroke-opacity': 0.95, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+  } else if (stroke !== 'none' && N(a['stroke-width'] ?? 1) > 0) {
     const sw = Math.min(N(a['stroke-width'] ?? 1), 2.4) * 0.7;
     out.push(part(':pencil', 'path', { ...rest, d: s.pencil, fill: 'none', stroke: graphite(stroke, theme.ink ?? theme.fg), 'stroke-width': +sw.toFixed(2), 'stroke-opacity': 0.85, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
   }

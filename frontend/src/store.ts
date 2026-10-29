@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Movie } from '../kino.ts';
-import type { Project, SettingsView } from './api.ts';
+import type { Project, SettingsView, Template } from './api.ts';
 
 export interface CompileError {
   message: string;
@@ -79,8 +79,8 @@ interface State {
 
   picker: 'open' | 'new' | null;
   setPicker: (p: 'open' | 'new' | null) => void;
-  /** example source the next new project starts from */
-  template: { name: string; source: string } | null;
+  /** the template the next new project starts from */
+  template: Template | null;
 
   toast: { id: number; text: string } | null;
   showToast: (text: string) => void;
