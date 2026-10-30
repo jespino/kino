@@ -344,6 +344,66 @@ A row (or column) of cells whose items **keep identity**, so moving values slide
 - Props: `values`, `capacity` (extra empty slots, e.g. a Go slice's cap), `cell` (64), `width` (cell width multiplier), `gap`, `indices` (true), `label`, `direction` (`horizontal`|`vertical`), `size`.
 - Assign: `a[i] = v`, `a.values = [...]`.
 - Methods: `push(v...)`, `pop()`, `shift()`, `unshift(v...)`, `insert(i, v)`, `remove(i)`, `set(i, v)`, `swap(i, j)`, `move(from, to)`, `clear()`, `reverse()`, `sort("desc"?)`, `highlight(i | [i, j] | all, color?)`, `unhighlight(i?)`, `range(name, from, to, color?, label?)` (bracket marking cells [from, to)), `unrange(name)`, `copyFrom(other, start?)` (copies fly out of the source), `moveFrom(other, count?)` (items fly over; all of them, or the first `count`).
+- `combine(op, a, b, ..., lanes?, options?)`: lane k becomes `a[k] op b[k]`. Copies of the inputs fly into
+  the lane, line up as an expression (`1 + 10`) with the operator between them, then merge into
+  the result, which is computed for you. Pass the lanes (`[0]`, `[2, 3]`) to do only some of
+  them (one lane per step is the scalar picture; all at once, the default, is SIMD). Operators:
+  `+ - * / min max`, bitwise `and or xor andnot` (`a &^ b`), comparisons `< > <= >= == !=`
+  (give `T`/`F`), and three-input `fma` (`a*b + c`) and `ifelse` (`a ? b : c`, `a` is a
+  `T`/`F` or 0/1 mask). The destination can be one of the inputs: `acc.combine("fma", x, y, acc)`.
+
+```kino
+out.combine("+", a, b, [0])        // scalar: one lane
+out.combine("+", a, b)             // SIMD: every lane at once
+m.combine(">", a, five)            // mask of T/F
+r.combine("ifelse", m, x, y)       // blend
+acc.combine("fma", x, y, acc)      // acc = x*y + acc
+```
+
+The optional final object configures the animation independently of the enclosing step:
+
+```kino
+out.combine("+", a, b, {
+  fly: 700ms, hold: 900ms, merge: 500ms,
+  flyEasing: ease-out, mergeEasing: ease-in-out,
+  operator: fade, result: pop
+})
+out.combine("+", a, b, [0], { hold: 1.2s })  // options also work with selected lanes
+```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `style` | `expression` | `expression` moves operand copies into the result cell; `arrows` keeps inputs in place and draws arrows through a boxed operator. |
+| `label` | `""` | Optional text inside the arrow mode box; empty uses the operator sign(s). |
+| `fly` | `600ms` | Time for copies of the operands to reach the destination. The operator appears during the second half. |
+| `hold` | `700ms` | Pause with the complete expression visible, before computing the result. |
+| `merge` | `400ms` | Time for the expression to fade out as the result appears. |
+| `flyEasing` | `ease-in-out` | Easing for the operand flight and operator entrance. |
+| `mergeEasing` | `ease-in-out` | Easing for the expression fade and result entrance. |
+| `operator` | `fade` | Entrance effect for the operator sign. |
+| `result` | `pop` | Entrance effect for the computed value. |
+
+Durations must be non-negative and their sum must be positive. Easing names are the
+same as step easings; effects are `fade`, `pop`, `none`, `slide-up`, `slide-down`,
+`slide-left`, or `slide-right`. Omitted fields use their defaults. Existing calls
+without options remain valid and use the more readable default animation.
+
+For a dataflow view, use `out.combine("+", a, b, { style: arrows })`, or
+`out.combine("+", a, b, [0], { style: arrows, label: "ADD" })`. Arrows draw
+from the selected source lanes through the operator box to the destination,
+pause on the complete diagram, then reveal the computed result. Source values stay in place. Leave space between
+arrays for the box and use a lane `gap` of at least 24px so arrows from earlier
+rows/columns can pass around nearer inputs. Connectors disappear when the
+operation finishes and do not replay on later steps.
+
+These phases use actual elapsed time: the step's easing cannot compress the reading
+pause. A morph transition automatically lasts at least `fly + hold + merge`; a
+longer enclosing transition keeps its remaining time after the combine finishes.
+Multiple combines in one transition run together, and the longest sets the minimum
+duration. The step's `hold:` still pauses on the final result. Whole-scene
+transitions (`fade`, `cut`, wipes, etc.) keep their usual behavior and do not play
+the combine phases. Use the default `morph` transition to show the operation.
+
 - Anchors: `a[i]`, `a.<rangeName>`. Negative indexes count from the end.
 
 ### `struct`

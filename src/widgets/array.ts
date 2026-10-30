@@ -1,6 +1,7 @@
 import { captionAttrs, defineWidget, glowRect, h, midBaseline, type Props, type RenderCtx, type RNode, type WidgetCtx } from '../core/widget.ts';
-import { rect, type Rect } from '../core/geometry.ts';
+import { center, clipToRect, rect, type Rect } from '../core/geometry.ts';
 import { isObj, list, num, str, type Value } from '../core/values.ts';
+import { easings } from '../core/easing.ts';
 import { fillTint } from '../core/color.ts';
 import { index, indexes, spread } from './util.ts';
 
@@ -10,7 +11,87 @@ interface Item {
   hl?: string | null;
   /** id of the item this one was copied from (it flies out of it) */
   from?: string;
+  /** made by combine(): the items that flew in (ids and values) and the operator signs drawn between them */
+  inputs?: { from: string; v: Value; source: Value }[];
+  signs?: string[];
+  combine?: CombineOptions;
 }
+
+interface CombineOptions {
+  style: string;
+  label: string;
+  fly: number;
+  hold: number;
+  merge: number;
+  flyEasing: string;
+  mergeEasing: string;
+  operator: string;
+  result: string;
+}
+const COMBINE_DEFAULTS: CombineOptions = {
+  style: 'expression', label: '',
+  fly: 600, hold: 700, merge: 400,
+  flyEasing: 'ease-in-out', mergeEasing: 'ease-in-out', operator: 'fade', result: 'pop',
+};
+const COMBINE_EFFECTS = ['fade', 'pop', 'none', 'slide-up', 'slide-down', 'slide-left', 'slide-right'];
+function combineOptions(v: Value | undefined, ctx: WidgetCtx): CombineOptions {
+  const options = { ...COMBINE_DEFAULTS };
+  if (v === undefined) return options;
+  if (!isObj(v)) ctx.error('combine: expected an options object');
+  for (const [key, value] of Object.entries(v)) {
+    if (!Object.hasOwn(COMBINE_DEFAULTS, key)) ctx.error(`combine: unknown option '${key}'; use ${Object.keys(COMBINE_DEFAULTS).join(', ')}`);
+    if (key === 'fly' || key === 'hold' || key === 'merge') {
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) ctx.error(`combine: ${key} must be a non-negative duration, e.g. 600ms`);
+      options[key] = value;
+    } else if (key === 'flyEasing' || key === 'mergeEasing') {
+      const name = str(value);
+      if (!Object.hasOwn(easings, name)) ctx.error(`combine: unknown easing '${name}'`);
+      options[key] = name;
+    } else if (key === 'style') {
+      const name = str(value);
+      if (!['expression', 'arrows'].includes(name)) ctx.error('combine: style must be expression or arrows');
+      options.style = name;
+    } else if (key === 'label') {
+      options.label = str(value);
+    } else if (key === 'operator' || key === 'result') {
+      const name = str(value);
+      if (!COMBINE_EFFECTS.includes(name)) ctx.error(`combine: ${key} must be one of ${COMBINE_EFFECTS.join(', ')}`);
+      options[key] = name;
+    }
+  }
+  if (!Number.isFinite(options.fly + options.hold + options.merge) || options.fly + options.hold + options.merge <= 0) ctx.error('combine: total duration must be greater than zero');
+  return options;
+}
+
+/** combine() operators: how many inputs, the signs drawn between them, and the result */
+interface Op {
+  arity: number;
+  signs: string[];
+  fn: (x: Value[], n: (i: number) => number) => Value;
+}
+const fmt = (x: number) => (Number.isInteger(x) ? x : Number(x.toPrecision(10)));
+const tf = (b: boolean) => (b ? 'T' : 'F');
+const truthy = (v: Value) => v === true || v === 'T' || v === 'true' || (typeof v === 'number' && v !== 0);
+const OPS: Record<string, Op> = {
+  '+': { arity: 2, signs: ['+'], fn: (_, n) => fmt(n(0) + n(1)) },
+  '-': { arity: 2, signs: ['−'], fn: (_, n) => fmt(n(0) - n(1)) },
+  '*': { arity: 2, signs: ['×'], fn: (_, n) => fmt(n(0) * n(1)) },
+  '/': { arity: 2, signs: ['÷'], fn: (_, n) => fmt(n(0) / n(1)) },
+  min: { arity: 2, signs: ['min'], fn: (_, n) => Math.min(n(0), n(1)) },
+  max: { arity: 2, signs: ['max'], fn: (_, n) => Math.max(n(0), n(1)) },
+  and: { arity: 2, signs: ['&'], fn: (_, n) => n(0) & n(1) },
+  or: { arity: 2, signs: ['|'], fn: (_, n) => n(0) | n(1) },
+  xor: { arity: 2, signs: ['^'], fn: (_, n) => n(0) ^ n(1) },
+  andnot: { arity: 2, signs: ['&^'], fn: (_, n) => n(0) & ~n(1) },
+  '<': { arity: 2, signs: ['<'], fn: (_, n) => tf(n(0) < n(1)) },
+  '>': { arity: 2, signs: ['>'], fn: (_, n) => tf(n(0) > n(1)) },
+  '<=': { arity: 2, signs: ['≤'], fn: (_, n) => tf(n(0) <= n(1)) },
+  '>=': { arity: 2, signs: ['≥'], fn: (_, n) => tf(n(0) >= n(1)) },
+  '==': { arity: 2, signs: ['='], fn: (x) => tf(str(x[0]) === str(x[1])) },
+  '!=': { arity: 2, signs: ['≠'], fn: (x) => tf(str(x[0]) !== str(x[1])) },
+  fma: { arity: 3, signs: ['×', '+'], fn: (_, n) => fmt(n(0) * n(1) + n(2)) },
+  ifelse: { arity: 3, signs: ['?', ':'], fn: (x) => (truthy(x[0]) ? x[1] : x[2]) },
+};
 
 interface Range {
   from: number;
@@ -41,7 +122,7 @@ export const array = defineWidget({
     'Cells with values. Props: values, capacity, cell, width, gap, indices, label, direction (horizontal|vertical), size. ' +
     'Methods: push, pop, shift, unshift, insert(i,v), remove(i), set(i,v), swap(i,j), move(from,to), clear, reverse, sort, ' +
     'highlight(i|[i..], color), unhighlight(i?), range(name, from, to, color?), unrange(name), copyFrom(other, at?), moveFrom(other, count?), ' +
-    'broadcast(other, i), gather(other, [indices])',
+    'broadcast(other, i), gather(other, [indices]), combine(op, a, b, ..., lanes?, options?) — lane k = a[k] op b[k]; the inputs fly in and merge; options style: arrows draws a boxed operation (op: + - * / min max and or xor andnot < > <= >= == != fma ifelse)',
   defaults: { values: [], capacity: null, cell: 64, width: 1, gap: 6, indices: true, label: '', direction: 'horizontal', size: 24, items: [], ranges: {} } as Props,
   init(p, ctx) {
     p.items = list(p.values).map((v, i) => ({ id: `${ctx.name}#${i}`, v }));
@@ -141,6 +222,35 @@ export const array = defineWidget({
         items[lane] = newItem(ctx, s.v, s.id);
       });
     },
+    /**
+     * lane k = op(a[k], b[k], ...): copies of the inputs fly into lane k, the
+     * operator appears between them, and they merge into the result. Pass the
+     * lanes (`[0]`, `[2, 3]`) to do some of them; all by default (the SIMD picture).
+     */
+    combine(p, [op, ...rest], ctx) {
+      const name = str(op ?? '');
+      const spec = OPS[name];
+      if (!spec) ctx.error(`combine: unknown operator '${name}'; use one of ${Object.keys(OPS).join(' ')}, e.g. out.combine("+", a, b)`);
+      const options = combineOptions(isObj(rest.at(-1)) ? rest.pop() : undefined, ctx);
+      if (rest.length < spec.arity || rest.length > spec.arity + 1)
+        ctx.error(`combine: '${name}' takes ${spec.arity} arrays and optionally the lanes, e.g. out.combine("${name}", ${['a', 'b', 'c'].slice(0, spec.arity).join(', ')}, [0])`);
+      const srcs = rest.slice(0, spec.arity).map((s) => ctx.props(refName(s, ctx)).items as Item[]);
+      const items = p.items as Item[];
+      const len = Math.min(...srcs.map((s) => s.length));
+      for (const k of indexes(ctx, rest[spec.arity], len)) {
+        const ins = srcs.map((s) => s[k]);
+        const n = (i: number) => {
+          const v = ins[i].v;
+          if (typeof v === 'number') return v;
+          if (v === 'T' || v === 'F' || typeof v === 'boolean') return truthy(v) ? 1 : 0;
+          const x = Number(v);
+          if (v === null || v === '' || Number.isNaN(x)) ctx.error(`combine: lane ${k} input ${i + 1} is '${str(v)}', not a number`);
+          return x;
+        };
+        while (items.length <= k) items.push(newItem(ctx, null));
+        items[k] = { id: ctx.newId(), v: spec.fn(ins.map((it) => it.v), n), inputs: ins.map((it, j) => ({ from: it.id, v: it.v, source: { $ref: [refName(rest[j], ctx), k], text: `${refName(rest[j], ctx)}[${k}]` } })), signs: spec.signs, combine: options };
+      }
+    },
     /** take all items out of another array (same identities, so they move) */
     moveFrom(p, [other, count], ctx) {
       // all items, or the first `count` (they keep their identity, so they fly over)
@@ -187,11 +297,20 @@ export const array = defineWidget({
         }, from('@ibg:')),
         h.text(`@item:${it.id}`, r.x + r.w / 2, midBaseline(r.y, r.h, p.size), str(it.v), {
           'font-size': p.size, 'font-family': rc.theme.fontMono, 'font-weight': 700, 'text-anchor': 'middle', fill: rc.theme.fg,
-        }, from('@item:')),
+        }, { ...from('@item:'), ...(it.combine ? { enter: it.combine.result, timing: combineTiming(it.combine, 'result') } : {}) }),
       );
+      if (it.inputs && it.combine?.style !== 'arrows') nodes.push(...combineNodes(rc, p, it, r));
     });
     for (const [name, r] of Object.entries(p.ranges as Record<string, Range>)) nodes.push(...rangeNodes(rc, p, name, r));
     return nodes;
+  },
+  placed(p, rc, self) {
+    const { cell } = geometry(p);
+    return (p.items as Item[]).flatMap((it, i) => {
+      if (!it.inputs || it.combine?.style !== 'arrows') return [];
+      const r = cell(i);
+      return combineArrows(rc, p, it, rect(r.x + self.dx, r.y + self.dy, r.w, r.h));
+    });
   },
   anchor(p, path) {
     const { cell, slots } = geometry(p);
@@ -208,6 +327,108 @@ export const array = defineWidget({
     return undefined;
   },
 });
+
+function combineTiming(o: CombineOptions, role: 'input' | 'operator' | 'result'): NonNullable<RNode['timing']> {
+  const duration = o.fly + o.hold + o.merge;
+  const mergeStart = o.fly + o.hold;
+  return role === 'result'
+    ? { duration, start: mergeStart, end: duration, easing: o.mergeEasing }
+    : { duration, start: role === 'operator' ? o.fly / 2 : 0, end: o.fly, leave: mergeStart, gone: duration, easing: o.flyEasing, exitEasing: o.mergeEasing };
+}
+
+/**
+ * The moment a combined lane is made: its inputs fly in and line up as an
+ * expression ("1 + 10") inside the cell, then dissolve into the result.
+ * All transient, so they only exist during the step that calls combine().
+ */
+function combineNodes(rc: RenderCtx, p: Props, it: Item, r: Rect): RNode[] {
+  const ins = it.inputs!;
+  const tokens = ins.flatMap((x, j) => (j === 0 ? [str(x.v)] : [it.signs![j - 1] ?? '', str(x.v)]));
+  const gap = (fs: number) => fs * 0.3;
+  const widths = (fs: number) => tokens.map((t) => rc.measure(t, fs, true, 700));
+  const total = (fs: number) => widths(fs).reduce((a, b) => a + b, 0) + gap(fs) * (tokens.length - 1);
+  const fs = p.size * Math.min(1, (r.w * 0.92) / Math.max(1, total(p.size)));
+  const w = widths(fs);
+  const y = midBaseline(r.y, r.h, fs);
+  const sign = rc.color('warn', 'warn');
+  let x = r.x + r.w / 2 - total(fs) / 2;
+  return tokens.map((t, i) => {
+    const cx = x + w[i] / 2;
+    x += w[i] + gap(fs);
+    const attrs = { 'font-size': fs, 'font-family': rc.theme.fontMono, 'font-weight': 700, 'text-anchor': 'middle', fill: i % 2 ? sign : rc.theme.fg };
+    return i % 2
+      ? h.text(`cmb:${it.id}:op${i}`, cx, y, t, attrs, { transient: true, enter: it.combine!.operator, timing: combineTiming(it.combine!, 'operator') })
+      : h.text(`cmb:${it.id}:in${i}`, cx, y, t, attrs, { transient: true, origin: `@item:${ins[i / 2].from}`, timing: combineTiming(it.combine!, 'input') });
+  });
+}
+
+/** Stationary operands feed a boxed operation, then an arrow reveals the result.
+ * Kept out of layout so the temporary connectors never move the arrays. */
+function combineArrows(rc: RenderCtx, p: Props, it: Item, dest: Rect): RNode[] {
+  const o = it.combine!;
+  let sources: Rect[];
+  try {
+    sources = it.inputs!.map(input => rc.anchor(input.source));
+  } catch (error) {
+    // Item metadata survives subsequent steps, including removal of its inputs.
+    if (error instanceof Error && error.message.includes('unknown widget')) return [];
+    throw error;
+  }
+  const target = center(dest);
+  const nearest = sources.reduce((a, b) => Math.hypot(center(a).x - target.x, center(a).y - target.y) < Math.hypot(center(b).x - target.x, center(b).y - target.y) ? a : b);
+  const c = center(nearest);
+  const vertical = Math.abs(target.y - c.y) >= Math.abs(target.x - c.x);
+  const edge = clipToRect(nearest, target.x, target.y);
+  const end = clipToRect(dest, c.x, c.y);
+  const label = o.label || it.signs!.join(' ');
+  const fs = p.size;
+  const height = Math.max(32, fs * 1.6);
+  const width = Math.max(height, rc.measure(label, fs, true, 700) + fs);
+  const hub = rect((edge.x + end.x - width) / 2, (edge.y + end.y - height) / 2, width, height);
+  const hc = center(hub);
+  const nodes: RNode[] = [];
+  const addArrow = (key: string, points: { x: number; y: number }[], color: string, output = false) => {
+    const tip = points.at(-1)!;
+    const prev = points.at(-2)!;
+    const length = Math.hypot(tip.x - prev.x, tip.y - prev.y) || 1;
+    const ux = (tip.x - prev.x) / length, uy = (tip.y - prev.y) / length;
+    const head = 8;
+    const d = points.map((pt, j) => `${j ? 'L' : 'M'}${pt.x} ${pt.y}`).join(' ');
+    const timing = output
+      ? { ...combineTiming(o, 'input'), start: o.fly * 0.65 }
+      : combineTiming(o, 'input');
+    const extra = { transient: true, decor: true, enter: 'draw', timing };
+    nodes.push(
+      h.path(`cmb:${it.id}:${key}`, d, { fill: 'none', stroke: color, 'stroke-width': 2.5, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, extra),
+      h.path(`cmb:${it.id}:${key}:head`, `M${tip.x} ${tip.y} L${tip.x - ux * head - uy * head / 2} ${tip.y - uy * head + ux * head / 2} L${tip.x - ux * head + uy * head / 2} ${tip.y - uy * head - ux * head / 2} Z`, { fill: color }, { ...extra, track: d }),
+    );
+  };
+  sources.forEach((src, j) => {
+    const sc = center(src);
+    // Earlier rows/columns route through the lane gutter, around nearer inputs.
+    const blocked = sources.some((other, k) => k !== j && (vertical
+      ? (other.y - sc.y) * (hc.y - other.y) > 0 && Math.abs(center(other).x - sc.x) < (src.w + other.w) / 2
+      : (other.x - sc.x) * (hc.x - other.x) > 0 && Math.abs(center(other).y - sc.y) < (src.h + other.h) / 2));
+    let points: { x: number; y: number }[];
+    if (blocked && vertical) {
+      const gutter = Math.max(...sources.map(r => r.x + r.w)) + 10;
+      points = [{ x: src.x + src.w + 3, y: sc.y }, { x: gutter, y: sc.y }, { x: gutter, y: hc.y }, { x: hub.x + hub.w + 3, y: hc.y }];
+    } else if (blocked) {
+      const gutter = Math.max(...sources.map(r => r.y + r.h)) + 10;
+      points = [{ x: sc.x, y: src.y + src.h + 3 }, { x: sc.x, y: gutter }, { x: hc.x, y: gutter }, { x: hc.x, y: hub.y + hub.h + 3 }];
+    } else {
+      points = [clipToRect(src, hc.x, hc.y, 3), clipToRect(hub, sc.x, sc.y, 3)];
+    }
+    addArrow(`in${j}`, points, rc.color(['accent', 'accent2', 'pink'][j] ?? 'accent', 'accent'));
+  });
+  addArrow('out', [clipToRect(hub, target.x, target.y, 3), clipToRect(dest, hc.x, hc.y, 4)], rc.color('good', 'good'), true);
+  const extra = { transient: true, decor: true, enter: o.operator, timing: combineTiming(o, 'operator') };
+  nodes.push(
+    h.rect(`cmb:${it.id}:bubble`, hub.x, hub.y, hub.w, hub.h, { rx: 10, fill: rc.theme.surface, stroke: rc.color('warn', 'warn'), 'stroke-width': 2 }, extra),
+    h.text(`cmb:${it.id}:label`, hc.x, midBaseline(hub.y, hub.h, fs), label, { 'font-size': fs, 'font-family': rc.theme.fontMono, 'font-weight': 700, 'text-anchor': 'middle', fill: rc.color('warn', 'warn') }, extra),
+  );
+  return nodes;
+}
 
 function idxAttrs(rc: RenderCtx, size: number, anchor: string) {
   return { 'font-size': size * 0.55, 'font-family': rc.theme.fontMono, 'text-anchor': anchor, fill: rc.theme.muted };

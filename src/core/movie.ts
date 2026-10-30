@@ -232,7 +232,7 @@ export class Movie {
     const s = segs[lo];
     if (s.hold) return still(s.to);
     const p = Math.min(1, Math.max(0, (t - s.start) / (s.end - s.start)));
-    return interpolate(s.from, s.to, s.ease(p), s.kind, s.style);
+    return interpolate(s.from, s.to, s.ease(p), s.kind, s.style, Math.max(0, t - s.start));
   }
 
   /** `extraDefs` is inserted into <defs> verbatim (the browser exporter embeds fonts this way). */
@@ -344,9 +344,14 @@ export function compile(src: string, opts: CompileOptions = {}): Movie {
         const l = n.attrs['data-link'];
         if (typeof l === 'string' && !links.has(l)) links.set(l, item.pos);
       }
+      // Timed effects only extend the transition that creates them, never later steps.
+      const existing = new Set(current.nodes.map((n) => n.key));
+      const d = o.kind === 'morph' && o.duration > 0
+        ? Math.max(o.duration, ...target.nodes.filter((n) => !existing.has(n.key)).map((n) => n.timing?.duration ?? 0))
+        : Math.max(0, o.duration);
       beats.push({
         start: t,
-        end: t + Math.max(0, o.duration),
+        end: t + d,
         frame: target,
         chapter: chapters.length - 1,
         line: groupLines[gi],
@@ -356,12 +361,11 @@ export function compile(src: string, opts: CompileOptions = {}): Movie {
         notes: g.flatMap((s) => (s.t === 'note' ? [s.text] : [])),
         spoken: g.flatMap((s) => (s.t === 'say' ? [spokenText(s.text)] : [])),
       });
-      const d = Math.max(0, o.duration);
       step.transitions.push({ start: t, end: t + d, kind: o.kind, ease: o.easeName, line: groupLines[gi] });
       rec.group(g, t, d, snapshot.widgets);
-      if (o.duration > 0) {
-        segments.push({ start: t, end: t + o.duration, from: current, to: target, ease: o.ease, kind: o.kind, style: o.style, hold: false });
-        t += o.duration;
+      if (d > 0) {
+        segments.push({ start: t, end: t + d, from: current, to: target, ease: o.ease, kind: o.kind, style: o.style, hold: false });
+        t += d;
       }
       current = target;
       state = snapshot;

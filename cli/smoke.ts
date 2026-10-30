@@ -617,5 +617,122 @@ test('links, zoom transitions and zoom-dependent details', () => {
   for (const theme of ['sketch', 'comic', 'pixel', 'paper-cut', 'whiteboard']) assert.match(compile(src, { theme }).slideSvgAt(1), /data-link="Detail"/, theme);
 });
 
+// combine phases use their own millisecond clock, including in presentation mode.
+const combineScene = `video { transition: 100ms, hold: 0ms }
+frame {
+  a: array at (0, 0) { values: [1, 2] }
+  b: array at (0, 100) { values: [10, 20] }
+  out: array at (0, 200) { capacity: 2 }
+}`;
+const visibleCombine = (m: ReturnType<typeof compile>, elapsed: number) => m.frameAt(m.beats[1].start + elapsed).nodes.filter(n => n.key.includes('cmb:') && Number(n.attrs.opacity ?? 1) > 0.001);
+
+test('combine: defaults provide a readable pause; later steps do not replay or extend it', () => {
+  const m = compile(combineScene + '\nstep { out.combine("+", a, b) }\nstep { out.highlight(all, good) }');
+  assert.equal(m.beats[1].end - m.beats[1].start, 1700);
+  assert.equal(m.beats[2].end - m.beats[2].start, 100);
+  for (const elapsed of [600, 900, 1299]) {
+   const nodes = visibleCombine(m, elapsed);
+   assert.equal(nodes.length, 6);
+   assert.ok(nodes.every(n => Number(n.attrs.opacity ?? 1) === 1));
+   assert.equal(m.slideFrameAt(1, elapsed).nodes.filter(n => n.key.includes('cmb:') && Number(n.attrs.opacity ?? 1) > 0.001).length, 6);
+  }
+  assert.equal(visibleCombine(m, 1750).length, 0);
+  assert.match(m.slideSvgAt(2), />11</);
+  assert.match(m.slideSvgAt(2), />22</);
+  assert.doesNotMatch(m.slideSvgAt(2), /cmb:/);
+});
+
+test('combine: custom timing, lanes, effects and easing are independent of step easing', () => {
+  const src = combineScene + '\nstep (4s, spring) { out.combine("+", a, b, [1], { fly: 400ms, hold: 800ms, merge: 400ms, flyEasing: linear, mergeEasing: linear, operator: fade, result: fade }) }';
+  const m = compile(src);
+  const node = (elapsed: number, match: string) => m.frameAt(elapsed).nodes.find(n => n.key.includes(match))!;
+  const input = node(200, 'in0');
+  const end = node(400, 'in0');
+  assert.equal(Number(input.attrs.y), (Number(end.attrs.y) + 40.4) / 2); // source baseline 40.4, destination baseline 240.4
+  assert.equal(visibleCombine(m, 800).length, 3);
+  assert.equal(Number(node(1400, 'op1').attrs.opacity), 0.5);
+  const result = m.frameAt(1400).nodes.find(n => n.tag === 'text' && n.text === '22')!;
+  assert.equal(Number(result.attrs.opacity), 0.5);
+  assert.equal(result.attrs.transform, undefined); // fade, not pop
+  assert.equal(visibleCombine(m, 1800).length, 0);
+  assert.equal(m.beats[1].end - m.beats[1].start, 4000);
+  assert.match(m.slideSvgAt(2), />22</);
+  assert.doesNotMatch(m.slideSvgAt(2), />11</);
+});
+
+test('combine: ternary operations, in-place inputs and zero-length phases', () => {
+  const src = combineScene.replace('out: array at (0, 200) { capacity: 2 }', 'out: array at (0, 200) { values: [3, 4] }');
+  const m = compile(src + '\nstep { out.combine("fma", a, b, out, { fly: 0ms, hold: 500ms, merge: 0ms }) }');
+  assert.equal(visibleCombine(m, 250).length, 10);
+  assert.match(m.slideSvgAt(2), />13</);
+  assert.match(m.slideSvgAt(2), />44</);
+  assert.doesNotMatch(m.svgAt(m.duration), /NaN|Infinity/);
+});
+
+test('combine: cut and fade preserve their whole-scene semantics', () => {
+  for (const kind of ['cut', 'fade']) {
+   const m = compile(combineScene + `\nstep (${kind}) { out.combine("+", a, b) }`);
+   assert.equal(m.beats[1].end - m.beats[1].start, kind === 'cut' ? 0 : 100);
+   assert.equal(visibleCombine(m, 50).length, 0);
+   assert.match(m.svgAt(m.duration), />11</);
+  }
+});
+
+test('combine arrows: selected lanes keep operands stationary and show a complete boxed operation before the result', () => {
+  const m = compile(combineScene + '\nstep { out.combine("+", a, b, [1], { style: arrows, label: "ADD", result: fade }) }\nstep { out.highlight(all, good) }');
+  const before = m.frameAt(0);
+  const paused = m.frameAt(800);
+  const nodes = visibleCombine(m, 800);
+  assert.equal(nodes.filter(n => n.key.endsWith(':label')).length, 1);
+  assert.equal(nodes.find(n => n.key.endsWith(':label'))?.text, 'ADD');
+  assert.equal(nodes.filter(n => /:(in[01]|out)$/.test(n.key)).length, 3);
+  assert.ok(nodes.every(n => Number(n.attrs.opacity ?? 1) === 1));
+  assert.equal(nodes.filter(n => n.origin).length, 0); // no flying operand copies
+  for (const source of before.nodes.filter(n => n.key.startsWith('@item:a#') || n.key.startsWith('@item:b#'))) {
+    assert.deepEqual(paused.nodes.find(n => n.key === source.key)?.attrs, source.attrs);
+  }
+  assert.ok(!paused.nodes.some(n => n.tag === 'text' && n.text === '22' && Number(n.attrs.opacity ?? 1) > 0));
+  const outgoing = nodes.find(n => n.key.endsWith(':out'))!;
+  assert.equal(Number(outgoing.attrs['stroke-dashoffset'] ?? 0), 0);
+  const midway = visibleCombine(m, 150).find(n => n.key.endsWith(':in0'))!;
+  assert.ok(Number(midway.attrs['stroke-dashoffset']) > 0);
+  assert.equal(visibleCombine(m, 1750).length, 0);
+  assert.equal(m.beats[2].end - m.beats[2].start, 100);
+  assert.doesNotMatch(m.slideSvgAt(2), />11</);
+  assert.match(m.slideSvgAt(2), />22</);
+  assert.doesNotMatch(m.slideSvgAt(2), /cmb:/);
+});
+
+test('combine arrows: all lanes, ternary in-place operations, removed sources and zero-length phases', () => {
+  const m = compile(combineScene + '\nstep { out.combine("+", a, b, { style: arrows }) }\nstep { remove a, b }');
+  assert.equal(visibleCombine(m, 800).filter(n => n.key.endsWith(':bubble')).length, 2);
+  assert.equal(visibleCombine(m, 800).filter(n => n.key.endsWith(':label') && n.text === '+').length, 2);
+  assert.match(m.slideSvgAt(2), />11</);
+  const src = combineScene.replace('out: array at (0, 200) { capacity: 2 }', 'out: array at (0, 200) { values: [3, 4] }');
+  const ternary = compile(src + '\nstep { out.combine("fma", a, b, out, { style: arrows, fly: 0ms, hold: 500ms, merge: 0ms }) }');
+  assert.equal(visibleCombine(ternary, 250).filter(n => /:in[012]$/.test(n.key)).length, 6);
+  assert.match(ternary.svgAt(ternary.duration), />13</);
+  assert.match(ternary.svgAt(ternary.duration), />44</);
+  assert.doesNotMatch(ternary.svgAt(250), /NaN|Infinity/);
+  for (const kind of ['cut', 'fade']) {
+    const cut = compile(combineScene + `\nstep (${kind}) { out.combine("+", a, b, { style: arrows }) }`);
+    assert.equal(visibleCombine(cut, 50).length, 0);
+    assert.match(cut.svgAt(cut.duration), />11</);
+  }
+});
+
+test('combine: invalid options produce DSL errors', () => {
+  for (const [opts, message] of [
+   ['{ fly: -1s }', /fly must be a non-negative duration/],
+   ['{ hold: "slow" }', /hold must be a non-negative duration/],
+   ['{ fly: 0ms, hold: 0ms, merge: 0ms }', /total duration must be greater than zero/],
+   ['{ flyEasing: typo }', /unknown easing/],
+   ['{ result: typo }', /result must be one of/],
+   ['{ style: typo }', /style must be expression or arrows/],
+   ['{ operator: draw }', /operator must be one of/],
+   ['{ typo: 1s }', /unknown option/],
+  ] as const) assert.throws(() => compile(combineScene + `\nstep { out.combine("+", a, b, ${opts}) }`), message);
+});
+
 console.log(failures ? `\n${failures} failing` : '\nall passed');
 process.exit(failures ? 1 : 0);

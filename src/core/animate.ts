@@ -1,3 +1,4 @@
+import { easings } from './easing.ts';
 import { lerpColor } from './color.ts';
 import { center, lerpPath, pathLength, pointAlong, rect, transformPoint } from './geometry.ts';
 import type { Frame } from './render.ts';
@@ -33,7 +34,7 @@ export function still(f: Frame): Frame {
  * matched nodes tween their attributes, new ones play their enter effect,
  * vanished ones play their exit effect.
  */
-export function interpolate(A: Frame, B: Frame, p: number, kind: TransitionKind, style: TransitionStyle = {}): Frame {
+export function interpolate(A: Frame, B: Frame, p: number, kind: TransitionKind, style: TransitionStyle = {}, elapsed?: number): Frame {
   if (kind === 'wipe' || kind === 'iris' || kind === 'slide' || kind === 'push') return reveal(A, B, p, kind, style);
   // Prezi-like: fly into a part of the slide, which opens up into the next one (and back out)
   if (kind === 'zoom-in') return zoom(A, B, p, style.target ? A.boxes?.[style.target] : undefined, B.view);
@@ -71,7 +72,11 @@ export function interpolate(A: Frame, B: Frame, p: number, kind: TransitionKind,
     const a = aMap.get(b.key);
     if (b.transient) {
       // only on the step that creates it
-      if (!aTransient.has(b.key) && p < 1) push(out, effect(b, b.enter ?? 'fade', p));
+      if (!aTransient.has(b.key) && (b.timing ? (elapsed ?? p * b.timing.duration) < b.timing.duration : p < 1)) {
+        if (b.timing) out.push(...timed(b, b.origin ? aMap.get(b.origin) : undefined, elapsed ?? p * b.timing.duration));
+        else if (b.leave === undefined) push(out, effect(b, b.enter ?? 'fade', p));
+        else out.push(...staged(b, b.origin ? aMap.get(b.origin) : undefined, p));
+      }
       continue;
     }
     if (a) {
@@ -80,7 +85,8 @@ export function interpolate(A: Frame, B: Frame, p: number, kind: TransitionKind,
       continue;
     }
     const src = b.origin ? aMap.get(b.origin) : undefined;
-    if (src && src.tag === b.tag) tween(out, { ...src, key: b.key }, b, p);
+    if (b.timing) out.push(...timed(b, src, elapsed ?? p * b.timing.duration));
+    else if (src && src.tag === b.tag) tween(out, { ...src, key: b.key }, b, p);
     else push(out, effect(b, b.enter ?? 'fade', b.delay ? Math.max(0, Math.min(1, (p - b.delay) / (1 - b.delay))) : p));
   }
   return { view, nodes: out };
@@ -194,6 +200,33 @@ function shift(n: RNode, dx: number, dy: number, s: number): RNode {
   if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01 && Math.abs(s - 1) < 1e-6) return n;
   const t = Math.abs(s - 1) < 1e-6 ? `translate(${dx} ${dy})` : `translate(${dx} ${dy}) scale(${s})`;
   return { ...n, attrs: { ...n.attrs, transform: n.attrs.transform ? `${t} ${n.attrs.transform}` : t } };
+}
+
+/** Enter and optionally leave on a local millisecond clock, independent of step easing. */
+function timed(b: RNode, src: RNode | undefined, elapsed: number): RNode[] {
+  const t = b.timing!;
+  const progress = (start: number, end: number) => end <= start ? (elapsed >= end ? 1 : 0) : Math.max(0, Math.min(1, (elapsed - start) / (end - start)));
+  const q = (easings[t.easing] ?? easings.linear)(progress(t.start, t.end));
+  const out: RNode[] = [];
+  if (src && src.tag === b.tag) tween(out, { ...src, key: b.key, text: b.text }, b, q);
+  else push(out, effect(b, b.enter ?? 'fade', q));
+  if (t.leave === undefined) return out;
+  const k = 1 - (easings[t.exitEasing ?? 'linear'] ?? easings.linear)(progress(t.leave, t.gone ?? t.duration));
+  return out.map((n) => ({ ...n, attrs: { ...n.attrs, opacity: Number(n.attrs.opacity ?? 1) * k } }));
+}
+
+/** Legacy fraction-based transient phases, driven by the enclosing transition. */
+function staged(b: RNode, src: RNode | undefined, p: number): RNode[] {
+  const out: RNode[] = [];
+  const leave = b.leave ?? 1;
+  if (src && src.tag === b.tag) tween(out, { ...src, key: b.key, text: b.text }, b, Math.min(1, p / (b.arrive ?? 1)));
+  else {
+    const d = b.delay ?? 0;
+    push(out, effect(b, b.enter ?? 'fade', Math.max(0, Math.min(1, (p - d) / Math.max(0.01, leave - d)))));
+  }
+  if (p <= leave) return out;
+  const k = Math.max(0, 1 - (p - leave) / Math.max(0.01, (1 - leave) * 0.6));
+  return out.map((n) => ({ ...n, attrs: { ...n.attrs, opacity: Number(n.attrs.opacity ?? 1) * k } }));
 }
 
 function push(out: RNode[], n: RNode | null) {

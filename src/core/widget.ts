@@ -26,6 +26,14 @@ export interface RNode {
   transient?: boolean;
   /** stagger: when appearing, wait this fraction (0..1) of the transition before playing the enter effect */
   delay?: number;
+  /** transient nodes with an `origin`: fraction (0..1) of the transition the flight from the origin takes (default 1) */
+  arrive?: number;
+  /** transient nodes: start fading out at this fraction (0..1) of the transition, gone well before its end */
+  leave?: number;
+  /** Local clock in milliseconds, independent of the enclosing transition's easing.
+   * New nodes enter over [start, end], optionally exit over [leave, gone].
+   * The compiler extends morph transitions to fit newly created timed nodes. */
+  timing?: { duration: number; start: number; end: number; leave?: number; gone?: number; easing: string; exitEasing?: string };
   /** emphasis played while transitioning into a frame whose action id differs (bounce, shake, ...); set by the engine */
   action?: { name: string; id: string; cx: number; cy: number };
   /** decoration that doesn't count for layout (positions, anchors): full-bleed backdrops */
