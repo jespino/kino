@@ -186,7 +186,7 @@ const GEOMETRY = ['x', 'y', 'width', 'height', 'rx', 'ry', 'cx', 'cy', 'r', 'x1'
 /** attributes every generated part keeps (fades, emphasis transforms, ...) */
 function shared(a: RNode['attrs']) {
   const keep: RNode['attrs'] = {};
-  for (const k of ['opacity', 'transform', 'transform-origin']) if (a[k] !== undefined) keep[k] = a[k];
+  for (const k of ['opacity', 'transform', 'transform-origin', 'data-link']) if (a[k] !== undefined) keep[k] = a[k];
   return keep;
 }
 

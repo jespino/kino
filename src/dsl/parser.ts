@@ -127,6 +127,10 @@ class Parser {
       return { t: 'then', pos: t.pos };
     }
     if (t.value === 'say' && this.peek(1).type === 'str') return this.say();
+    if ((t.value === 'note' || t.value === 'notes') && this.peek(1).type === 'str') {
+      this.next();
+      return { t: 'note', text: (this.next() as { value: string }).value, pos: t.pos };
+    }
     if (t.value === 'remove' && this.peek(1).type === 'ident' && !this.isPathContinuation(1)) {
       this.next();
       const names = [this.ident()];

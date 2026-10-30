@@ -42,6 +42,13 @@ type Dialogs interface {
 	SaveFile(title, start, name string) (string, error)
 }
 
+// Windows opens extra native windows (the desktop shell); nil in a browser,
+// where the UI opens them itself.
+type Windows interface {
+	// OpenWindow opens (or brings to front) the window called name, showing url of the UI.
+	OpenWindow(name, title, url string, width, height int)
+}
+
 // Project is the open project.
 type Project struct {
 	Path   string `json:"path"` // the .kino script
@@ -72,6 +79,28 @@ type App struct {
 	tts      string // TTS server URL for tests ("" = env, settings, default)
 	inflight map[string]*call
 	status   *statusFile // what .kino/status.json holds
+	windows  Windows
+}
+
+// SetWindows lets the app open native windows (the speaker view).
+func (a *App) SetWindows(w Windows) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.windows = w
+}
+
+// OpenSpeakerWindow opens the speaker view (notes, next slide, timer) in its
+// own window. It returns false when the shell can't, and the UI should open
+// a browser window instead.
+func (a *App) OpenSpeakerWindow() bool {
+	a.mu.Lock()
+	w := a.windows
+	a.mu.Unlock()
+	if w == nil {
+		return false
+	}
+	w.OpenWindow("speaker", "Kino Studio · Speaker view", "/#speaker", 1100, 720)
+	return true
 }
 
 // New creates the service. docs are copied into projects for agents.

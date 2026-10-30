@@ -3,6 +3,7 @@ import { center, clipToRect, rect, union, type Rect } from '../core/geometry.ts'
 import { HALO_FILTER } from '../core/svg.ts';
 import { isRef, str, type Value } from '../core/values.ts';
 import { bracePath, roundRectPath } from './shapes.ts';
+import { richMeasure, richText } from '../core/rich.ts';
 
 /**
  * A note attached to something: rounded bubble + leader line + dot on the target.
@@ -20,7 +21,8 @@ export const callout = defineWidget({
     const lines = str(p.text).split('\n');
     const s = p.size;
     const pad = s * 0.75;
-    const tw = Math.max(...lines.map((l) => rc.measure(l, s, p.mono, 500)));
+    const font = { size: s, mono: p.mono, weight: 500 };
+    const tw = Math.max(...lines.map((l) => richMeasure(rc, l, font)));
     const W = tw + pad * 2, H = lines.length * s * 1.35 + pad * 1.2;
     let side = p.side;
     if (side === 'auto') side = c.x > rc.video.width * 0.6 ? 'left' : 'right';
@@ -45,9 +47,9 @@ export const callout = defineWidget({
     ];
     lines.forEach((l, i) =>
       nodes.push(
-        h.text(`t${i}`, bx + pad, by + pad * 0.6 + s * (0.95 + i * 1.35), l, {
+        ...richText(rc, `t${i}`, bx + pad, by + pad * 0.6 + s * (0.95 + i * 1.35), l, {
           'font-size': s, 'font-family': p.mono ? rc.theme.fontMono : rc.theme.fontSans, 'font-weight': 500, fill: rc.theme.fg,
-        }),
+        }, font),
       ),
     );
     return nodes;

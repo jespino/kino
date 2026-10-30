@@ -78,6 +78,7 @@ func desktop(args []string) {
 	})
 	svc.SetEmitter(func(name string, data any) { wa.Event.Emit(name, data) })
 	svc.SetDialogs(dialogs{wa})
+	svc.SetWindows(windows{wa})
 
 	wa.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "Kino Studio",
@@ -122,6 +123,24 @@ func serve(args []string) {
 }
 
 // dialogs adapts Wails' native dialogs to app.Dialogs.
+type windows struct{ wa *application.App }
+
+func (w windows) OpenWindow(name, title, url string, width, height int) {
+	if win, ok := w.wa.Window.GetByName(name); ok {
+		win.Show()
+		win.Focus()
+		return
+	}
+	w.wa.Window.NewWithOptions(application.WebviewWindowOptions{
+		Name:             name,
+		Title:            title,
+		Width:            width,
+		Height:           height,
+		BackgroundColour: application.NewRGB(17, 19, 23),
+		URL:              url,
+	})
+}
+
 type dialogs struct{ wa *application.App }
 
 func (d dialogs) ChooseDirectory(title, start string, canCreate bool) (string, error) {

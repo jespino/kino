@@ -4,7 +4,7 @@ import type { Frame } from './render.ts';
 import { nodeBox } from './render.ts';
 import type { RNode } from './widget.ts';
 
-export type TransitionKind = 'morph' | 'fade' | 'cut' | 'wipe' | 'iris' | 'slide' | 'push';
+export type TransitionKind = 'morph' | 'fade' | 'cut' | 'wipe' | 'iris' | 'slide' | 'push' | 'zoom-in' | 'zoom-out';
 export type Direction = 'left' | 'right' | 'up' | 'down';
 export type IrisShape = 'circle' | 'diamond' | 'square' | 'star';
 export const DIRECTIONS: Direction[] = ['left', 'right', 'up', 'down'];
@@ -15,6 +15,8 @@ export interface TransitionStyle {
   /** where things move: wipe's edge (default right), slide/push's pictures (default left) */
   direction?: Direction;
   shape?: IrisShape;
+  /** zoom-in: the widget of the current slide the next one grows out of; zoom-out: the widget of the next slide the current one shrinks into */
+  target?: string;
 }
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -23,7 +25,7 @@ const NUM = /-?(?:\d+\.?\d*|\.\d+)(?:e-?\d+)?/g;
 
 /** Frame shown while holding (transient nodes are only visible while they appear). */
 export function still(f: Frame): Frame {
-  return { view: f.view, nodes: f.nodes.filter((n) => !n.transient) };
+  return { view: f.view, nodes: f.nodes.filter((n) => !n.transient), boxes: f.boxes };
 }
 
 /**
@@ -33,6 +35,9 @@ export function still(f: Frame): Frame {
  */
 export function interpolate(A: Frame, B: Frame, p: number, kind: TransitionKind, style: TransitionStyle = {}): Frame {
   if (kind === 'wipe' || kind === 'iris' || kind === 'slide' || kind === 'push') return reveal(A, B, p, kind, style);
+  // Prezi-like: fly into a part of the slide, which opens up into the next one (and back out)
+  if (kind === 'zoom-in') return zoom(A, B, p, style.target ? A.boxes?.[style.target] : undefined, B.view);
+  if (kind === 'zoom-out') return zoom(B, A, 1 - p, style.target ? B.boxes?.[style.target] : undefined, B.view);
   const view = rect(lerp(A.view.x, B.view.x, p), lerp(A.view.y, B.view.y, p), lerp(A.view.w, B.view.w, p), lerp(A.view.h, B.view.h, p));
   const aNodes = A.nodes.filter((n) => !n.transient);
   if (kind === 'cut') return p < 1 ? { view: A.view, nodes: aNodes } : still(B);
@@ -123,6 +128,34 @@ function reveal(A: Frame, B: Frame, p: number, kind: TransitionKind, style: Tran
       { from: a.length, to: a.length + b.length, d: clipB },
     ],
   };
+}
+
+/**
+ * The camera flies from `big`'s view into `target` (a rect of `big`), while
+ * `small` (a whole slide) sits exactly where the target is, growing with it
+ * until it fills the screen at q = 1. `big` fades out on the way in; the
+ * detail slide is always drawn over the overview.
+ */
+function zoom(big: Frame, small: Frame, q: number, target: Frame['view'] | undefined, out: Frame['view']): Frame {
+  const V = big.view;
+  const aspect = V.h / V.w;
+  // the target, widened to the screen's shape (and a little margin); without one, the middle quarter
+  let R = target && target.w > 0 && target.h > 0 ? target : { x: V.x + V.w * 0.375, y: V.y + V.h * 0.375, w: V.w / 4, h: V.h / 4 };
+  const w = Math.max(R.w, R.h / aspect) * 1.1;
+  R = { x: R.x + R.w / 2 - w / 2, y: R.y + R.h / 2 - (w * aspect) / 2, w, h: w * aspect };
+  // camera: the center moves linearly, the width shrinks geometrically (a steady zoom)
+  const cw = V.w * Math.pow(R.w / V.w, q);
+  const f = V.w === R.w ? q : (V.w - cw) / (V.w - R.w);
+  const C = { x: V.x + (R.x - V.x) * f, y: V.y + (R.y - V.y) * f, w: cw, h: cw * aspect };
+  const s = out.w / C.w, tx = out.x - C.x * s, ty = out.y - C.y * s;
+  // where the target is on screen now: the next slide fills it
+  const ro = { x: R.x * s + tx, y: R.y * s + ty, w: R.w * s };
+  const s2 = ro.w / small.view.w;
+  const bigOp = 1 - Math.max(0, Math.min(1, (q - 0.45) / 0.55));
+  const smallOp = Math.max(0, Math.min(1, q / 0.55));
+  const a = big.nodes.filter((n) => !n.transient).map((n) => effect(shift(n, tx, ty, s), 'fade', bigOp)).filter((n): n is RNode => !!n);
+  const b = small.nodes.filter((n) => !n.transient).map((n) => effect(shift(n, ro.x - small.view.x * s2, ro.y - small.view.y * s2, s2), 'fade', smallOp)).filter((n): n is RNode => !!n);
+  return { view: out, nodes: [...a, ...b] };
 }
 
 const boxPath = (x: number, y: number, w: number, h: number) => `M${x} ${y}h${w}v${h}h${-w}Z`;
@@ -316,6 +349,15 @@ export function effect(n: RNode, name: string, q: number): RNode | null {
       if (attrs.fill && attrs.fill !== 'none') attrs['fill-opacity'] = q;
       break;
     }
+    case 'grow':
+      // bars: rise from their bottom edge
+      if (n.tag === 'rect' && !n.attrs.transform) {
+        const y = Number(attrs.y), hgt = Number(attrs.height);
+        attrs.y = y + hgt * (1 - q);
+        attrs.height = hgt * q;
+        attrs.opacity = op * Math.min(1, q * 3);
+      } else attrs.opacity = op * q;
+      break;
     case 'swell':
       // a ring that grows out of its shape's outline and fades
       attrs.opacity = op * (1 - q);

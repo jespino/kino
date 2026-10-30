@@ -16,6 +16,8 @@ export interface Frame {
   view: Rect;
   /** nodes[from..to) are drawn clipped to path `d` (canvas coordinates, even-odd); set by whole-picture transitions */
   clips?: { from: number; to: number; d: string }[];
+  /** where each widget is (canvas coordinates), for zoom transitions */
+  boxes?: Record<string, Rect>;
 }
 
 /** Space kept clear at each side of every slide (px). */
@@ -104,7 +106,12 @@ class Layout {
       const act = actor?.props.action as { name: string; n: number } | undefined;
       const ab = actor && this.place(actor.name).bbox;
       const action = act && ab ? { name: act.name, id: `${actor!.name}:${act.name}:${act.n}`, cx: ab.x + ab.w / 2, cy: ab.y + ab.h / 2 } : undefined;
-      const op = chain.reduce((o, x) => o * (x.props.opacity ?? 1), 1);
+      // `minZoom`/`maxZoom`: details that show only when the camera is that close (or far)
+      const zoom = this.state.camera.zoom || 1;
+      const shown = (x: Instance) => zoom >= num(x.props.minZoom ?? 0) - 1e-9 && (x.props.maxZoom === null || x.props.maxZoom === undefined || zoom <= num(x.props.maxZoom) + 1e-9);
+      const op = chain.reduce((o, x) => o * (x.props.opacity ?? 1) * (shown(x) ? 1 : 0), 1);
+      // `link`: clicking it while presenting jumps to that frame or step (or opens the URL)
+      const link = chain.find((x) => x.props.link !== null && x.props.link !== undefined && x.props.link !== '')?.props.link;
       for (const n of p.nodes) {
         const node: RNode = {
           ...n,
@@ -115,10 +122,12 @@ class Layout {
           action: n.decor ? undefined : action,
         };
         if (op !== 1) node.attrs = { ...node.attrs, opacity: num(node.attrs.opacity ?? 1) * op };
+        if (link !== undefined && !n.decor) node.attrs = { ...node.attrs, 'data-link': str(link) };
         nodes.push(node);
       }
     }
-    return { nodes, view: this.camera() };
+    const boxes = Object.fromEntries(this.state.widgets.map((w) => [w.name, this.place(w.name).bbox]));
+    return { nodes, view: this.camera(), boxes };
   }
 
   private camera(): Rect {

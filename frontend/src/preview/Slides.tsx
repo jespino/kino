@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react';
+import { Deck, type DeckCommand } from '../../present.ts';
+import { api, broadcast, EVENT_PRESENT_CMD, EVENT_PRESENT_SHOW, on } from '../api.ts';
 import { play, seek } from '../engine.ts';
 import { useStore } from '../store.ts';
 
@@ -9,10 +11,17 @@ export function present(how: 'fullscreen' | 'window') {
   useStore.setState({ presenting: how });
 }
 
+/** Opens the speaker view: a native window in the app, a browser window otherwise. */
+export async function openSpeakerView() {
+  const native = await api.openSpeakerWindow().catch(() => false);
+  if (!native) window.open('/#speaker', 'kino-speaker', 'width=1100,height=720');
+}
+
 /**
  * Presentation (slides) mode: each click / space plays exactly one transition
  * (a step or a `then` sub-step) and then waits. Holds, waits and narration
- * pauses are skipped, and narration isn't played.
+ * pauses are skipped, and narration isn't played. Links jump to their slide;
+ * `s` opens the speaker view, which follows along.
  */
 export function Slides() {
   const mode = useStore((s) => s.presenting);
@@ -24,64 +33,26 @@ export function Slides() {
     if (!mode) return;
     const el = root.current!;
     const movie = () => useStore.getState().movie!;
-    // beats already applied at time 0 (an opening frame that appears instantly)
-    // show the same picture as no beats: never go back before them
-    const first = () => movie().beatAt(0);
-    let beat = Math.max(first(), movie().beatAt(useStore.getState().time));
-    /** start time (performance.now) of the transition into beat+1, while it plays */
-    let animStart: number | null = null;
-    /** the pending animation frame of the running transition */
-    let raf = 0;
     let counterTimer = 0;
     let current: 'fullscreen' | 'window' = mode;
     let stopped = false;
 
-    const draw = () => {
-      const m = movie();
-      const elapsed = animStart === null ? 0 : performance.now() - animStart;
-      stage.current!.innerHTML = m.slideSvgAt(Math.min(beat, m.beats.length), elapsed);
-      counter.current!.textContent = `${beat - first()} / ${m.beats.length - first()}`;
-    };
     const flash = () => {
       counter.current!.classList.add('show');
       clearTimeout(counterTimer);
       counterTimer = window.setTimeout(() => counter.current?.classList.remove('show'), 1200);
     };
-    const finishBeat = () => {
-      animStart = null;
-      beat = Math.min(beat + 1, movie().beats.length);
-      draw();
-    };
-    const tick = () => {
-      if (stopped || animStart === null) return;
-      const b = movie().beats[beat];
-      if (!b || performance.now() - animStart >= b.end - b.start) return finishBeat();
-      draw();
-      raf = requestAnimationFrame(tick);
-    };
-    const advance = () => {
-      // a click during a transition completes it and starts the next one
-      if (animStart !== null) finishBeat();
-      if (beat >= movie().beats.length) return flash();
-      const b = movie().beats[beat];
-      if (b.end <= b.start) return finishBeat(); // cut
-      animStart = performance.now();
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(tick);
-    };
-    const goTo = (n: number) => {
-      animStart = null;
-      beat = Math.max(first(), Math.min(n, movie().beats.length));
-      draw();
-      flash();
-    };
-    /** beat count at the end of the next/previous step (`then` sub-steps are skipped over) */
-    const chapterBeat = (dir: 1 | -1) => {
-      const beats = movie().beats;
-      const ends = [0];
-      for (let k = 1; k <= beats.length; k++) if (k === beats.length || beats[k].chapter !== beats[k - 1].chapter) ends.push(k);
-      return dir > 0 ? (ends.find((k) => k > beat) ?? beats.length) : (ends.filter((k) => k < beat).pop() ?? 0);
-    };
+    const deck: Deck = new Deck(movie, {
+      draw: (svg) => {
+        stage.current!.innerHTML = svg;
+        counter.current!.textContent = deck.counter();
+      },
+      moved: () => {
+        flash();
+        broadcast(EVENT_PRESENT_SHOW, deck.speaker()).catch(() => {});
+      },
+    }, window, movie().beatAt(useStore.getState().time));
+
     const setMode = async (how: 'fullscreen' | 'window') => {
       current = how;
       if (how === 'fullscreen' && !document.fullscreenElement) {
@@ -98,54 +69,56 @@ export function Slides() {
     const stop = () => {
       if (stopped) return;
       stopped = true;
+      deck.stop();
       if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
       const m = movie();
+      broadcast(EVENT_PRESENT_SHOW, null).catch(() => {});
       // leave the studio on the slide we were showing
       useStore.setState({ presenting: null });
-      seek(beat > 0 ? m.beats[Math.min(beat, m.beats.length) - 1].end : 0);
+      seek(deck.beat > 0 ? m.beats[Math.min(deck.beat, m.beats.length) - 1].end : 0);
     };
 
     const onKey = (e: KeyboardEvent) => {
-      const k = e.key;
-      if ([' ', 'ArrowRight', 'ArrowDown', 'PageDown', 'Enter', 'n'].includes(k)) advance();
-      else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace', 'p'].includes(k)) goTo(animStart !== null ? beat : beat - 1);
-      else if (k === 'Home') goTo(first());
-      else if (k === 'End') goTo(movie().beats.length);
-      else if (k === ']') goTo(chapterBeat(1));
-      else if (k === '[') goTo(chapterBeat(-1));
-      else if (k === 'Escape') stop();
-      else if (k === 'f') setMode(current === 'fullscreen' ? 'window' : 'fullscreen');
+      if (deck.key(e)) {
+        /* navigation */
+      } else if (e.key === 'Escape') stop();
+      else if (e.key === 'f') setMode(current === 'fullscreen' ? 'window' : 'fullscreen');
+      else if (e.key === 's') openSpeakerView();
       else return;
       e.preventDefault();
       e.stopPropagation();
     };
+    const onClick = (e: MouseEvent) => deck.click(e);
     const onContext = (e: MouseEvent) => {
       e.preventDefault();
-      goTo(beat - 1);
+      deck.back();
     };
     // leaving fullscreen (Esc) ends a fullscreen presentation; switching with `f` doesn't
     const onFullscreen = () => !document.fullscreenElement && current === 'fullscreen' && stop();
+    // the speaker view drives the deck too, and asks for the state when it opens
+    const offCmd = on<DeckCommand | 'hello'>(EVENT_PRESENT_CMD, (c) => {
+      if (c === 'hello') broadcast(EVENT_PRESENT_SHOW, deck.speaker()).catch(() => {});
+      else deck.command(c);
+    });
 
-    el.addEventListener('click', advance);
+    el.addEventListener('click', onClick);
     el.addEventListener('contextmenu', onContext);
     el.addEventListener('keydown', onKey);
     document.addEventListener('fullscreenchange', onFullscreen);
     // the script may change while presenting (the agent keeps working)
     const unsub = useStore.subscribe((s, prev) => {
-      if (s.movie && s.movie !== prev.movie) {
-        beat = Math.min(beat, s.movie.beats.length);
-        draw();
-      }
+      if (s.movie && s.movie !== prev.movie) deck.refresh();
     });
-    draw();
-    flash();
+    deck.goTo(deck.beat);
     setMode(mode);
     return () => {
       stopped = true;
-      el.removeEventListener('click', advance);
+      deck.stop();
+      el.removeEventListener('click', onClick);
       el.removeEventListener('contextmenu', onContext);
       el.removeEventListener('keydown', onKey);
       document.removeEventListener('fullscreenchange', onFullscreen);
+      offCmd();
       unsub();
       clearTimeout(counterTimer);
     };

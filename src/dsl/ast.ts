@@ -36,7 +36,9 @@ export type Stmt =
   // splits a step into sequential sub-steps
   | { t: 'then'; pos: Pos }
   // narration: say "text" (speaker: Ryan, instruct: "...")
-  | { t: 'say'; text: string; opts: Expr[]; pos: Pos };
+  | { t: 'say'; text: string; opts: Expr[]; pos: Pos }
+  // speaker notes: note "text" (shown in the speaker view, never on the slide)
+  | { t: 'note'; text: string; pos: Pos };
 
 export type Item =
   | { t: 'video'; props: [string, Expr][]; pos: Pos }

@@ -87,7 +87,9 @@ voice { speaker: Victoria }              // change the default voice from here o
   `ease`, `ease-in`, `ease-out`, `ease-in-out`, `back-out`, `back-in-out`,
   `spring`, `bounce`); a kind (`morph` (default), `fade`, `cut`, or a slide
   transition: `wipe`, `iris`, `slide`, `push`, with `direction: left|right|up|down`
-  or `shape: circle|diamond|square|star` for iris); `hold: 2s`. Use slide
+  or `shape: circle|diamond|square|star` for iris; `zoom-in`/`zoom-out` with
+  `target: widget` to fly into a widget of the current slide, or back out into
+  one of the next); `hold: 2s`. Use slide
   transitions sparingly, between sections; `morph` is what makes Kino look good.
   The first frame appears instantly unless it has options like `(fade)` or `(1500ms)`.
 - Statements in a step animate **together**. `then` splits them into
@@ -137,7 +139,15 @@ highlight good bad warn info caption glow surface surface2 border panel bg`.
 Common props on every widget: `at`, `origin`, `opacity` (`hide()`/`show()`),
 `z`, `enter`/`exit` (`fade pop draw slide-up slide-down slide-left slide-right none`),
 `panel: "Caption"` (wraps it in a captioned panel), `panelGlow: true`,
-`group: g` (member of group `g`).
+`group: g` (member of group `g`), `link: "Step name"` (or a URL; clicking it
+while presenting jumps there), `minZoom`/`maxZoom` (only shown at that camera
+zoom: details that appear when you zoom in).
+
+**Text styles** in label/box/list/callout text: `**bold**`, `*italic*`,
+`` `code` ``, `{accent: colored}` (theme color or #hex).
+
+**Speaker notes**: `note "..."` inside a frame or step (any sub-step). They show
+in the speaker view, never on the slide. Write them for live talks.
 
 **Emphasis methods on every widget** play during their step: `bounce() jump() shake() pulse() spin() wiggle() tada()`.
 
@@ -160,6 +170,7 @@ Common props on every widget: `at`, `origin`, `opacity` (`hide()`/`show()`),
 | `tree` | `values` (BST by insertion) or `nodes` ({id: [kids]}, `_` = empty slot), `binary`, `labels`, `shape` (circle/box), `r`, `levelGap`, `siblingGap`, `direction` (horizontal = linked list), `arrows` | `insert(v..) delete(v) add(parent, child, side?) remove(id) rotateLeft(id) rotateRight(id) swap(a,b) search(v) highlight(id,color) highlightPath([..]) unhighlight label(id,text)` | `t[id]` |
 | `memory` | `size` (bytes) or `bytes`, `base` (address), `columns`, `cell`, `fontSize`, `endian`, `ascii`, `label` | `write(off, v, type?)` (u8..u64 i8..i64 f32 f64 str bytes), `set fill copy(src,dst,len)`, `region(name, from, len, color?, label?)`, `unregion`, `highlight(from, len?, color?)`, `unhighlight` | `m[off]`, `m.<region>` |
 | `bits` | `value` (num/`0b..`/`"0101"`), `width`, `format` (dec/hex/signed/float/none), `cell`, `fontSize`, `nibbles`, `label` | `set setFloat shl shr sar rol ror and or xor not setBit clearBit flip`, `group(name, hi, lo, color?, label?)`, `highlight(hi, lo?, color?)`; bit 0 = LSB | `b[i]`, `b.<group>` |
+| `chart` | `type` (bar/line/pie), `values` + `labels` or `data: {Mon: 3}`, `max`, `width`, `height`, `color`, `colors` (list/auto), `unit`, `valueLabels`, `grid`, `hole` (donut) | `c.values = [...]` (bars grow), `c.data = {...}` (by label), `set(i,v)`, `push(label, v)`, `remove(i)`, `highlight(i, color)`, `unhighlight` | `c[i]` |
 | `group` | `at`/`origin` (moves all members; without `at` they stay put), `scale`, `rotate`, `opacity`, `panel` | `g.at = (x, y)`, `g.scale = 1.2`, `g.pulse()`, `remove g` (members too) | `g` (box around the members) |
 | `callout` (overlay) | `target`, `text` (`\n`), `side` (auto/left/right/above/below), `distance`, `color`, `mono` | retarget by assigning `target` | |
 | `brace` (overlay) | `from`, `to`, `side` (below/above/left/right), `label`, `color`, `gap` | | |

@@ -5,6 +5,7 @@
 // `virtual:kino-player` Vite plugin (vite.config.ts).
 import { compile, type ImageAsset, type Movie, type NarrationAudio, type ProjectVoice } from '../../src/index.ts';
 import { customWidgets } from '../widgets.ts';
+import { Deck, SpeakerView } from '../present.ts';
 
 /** What exportHtml embeds as JSON next to the player. */
 export interface PlayerData {
@@ -25,6 +26,8 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden}
 .kp-stage svg{display:block;width:100%;height:100%}
 .kp-counter{position:fixed;right:16px;bottom:16px;padding:3px 10px;border-radius:12px;background:#000a;color:#fff;font:13px system-ui,sans-serif;opacity:0;transition:opacity .3s;pointer-events:none}
 .kp-counter.show{opacity:1}
+.kp-stage svg *{pointer-events:none}
+.kp-stage svg [data-link]{pointer-events:auto;cursor:pointer}
 .kp-error{margin:20px;color:#ff8a8a;font:14px system-ui,sans-serif;white-space:pre-wrap}
 `;
 
@@ -71,85 +74,53 @@ function start() {
   };
   new ResizeObserver(fit).observe(root);
 
-  // beats already applied at time 0 (an opening frame that appears instantly)
-  // show the same picture as no beats: start after them, so the first click moves on
-  const first = movie.beatAt(0);
-  let beat = first;
-  /** performance.now() when the transition into beat+1 started, while it plays */
-  let animStart: number | null = null;
-  /** the pending animation frame of the running transition */
-  let raf = 0;
-  let counterTimer = 0;
+  // speaker view: a popup this window draws into (no second copy of the deck)
+  let speaker: { win: Window; view: SpeakerView } | null = null;
+  const openSpeaker = () => {
+    if (speaker && !speaker.win.closed) return speaker.win.focus();
+    const win = window.open('', 'kino-speaker', 'width=1100,height=720');
+    if (!win) return;
+    win.document.body.innerHTML = '';
+    // the slides need the embedded fonts there too
+    for (const st of document.head.querySelectorAll('style')) if (st.textContent?.includes('@font-face')) win.document.head.append(win.document.importNode(st, true));
+    const view = new SpeakerView(win.document.body, (c) => deck.command(c));
+    speaker = { win, view };
+    view.show(deck.speaker());
+  };
 
-  const draw = () => {
-    const elapsed = animStart === null ? 0 : performance.now() - animStart;
-    stage.innerHTML = movie.slideSvgAt(Math.min(beat, movie.beats.length), elapsed);
-    counter.textContent = `${beat - first} / ${movie.beats.length - first}`;
-  };
-  const flash = () => {
-    counter.classList.add('show');
-    clearTimeout(counterTimer);
-    counterTimer = window.setTimeout(() => counter.classList.remove('show'), 1200);
-  };
-  const finishBeat = () => {
-    animStart = null;
-    beat = Math.min(beat + 1, movie.beats.length);
-    draw();
-  };
-  const tick = () => {
-    if (animStart === null) return;
-    const b = movie.beats[beat];
-    if (!b || performance.now() - animStart >= b.end - b.start) return finishBeat();
-    draw();
-    raf = requestAnimationFrame(tick);
-  };
-  const advance = () => {
-    // a click during a transition completes it and starts the next one
-    if (animStart !== null) finishBeat();
-    if (beat >= movie.beats.length) return flash();
-    const b = movie.beats[beat];
-    if (b.end <= b.start) return finishBeat(); // cut
-    animStart = performance.now();
-    cancelAnimationFrame(raf);
-    raf = requestAnimationFrame(tick);
-  };
-  const goTo = (n: number) => {
-    animStart = null;
-    beat = Math.max(first, Math.min(n, movie.beats.length));
-    draw();
-    flash();
-  };
-  /** beat count at the end of the next/previous step (`then` sub-steps are skipped over) */
-  const chapterBeat = (dir: 1 | -1) => {
-    const beats = movie.beats;
-    const ends = [0];
-    for (let k = 1; k <= beats.length; k++) if (k === beats.length || beats[k].chapter !== beats[k - 1].chapter) ends.push(k);
-    return dir > 0 ? (ends.find((k) => k > beat) ?? beats.length) : (ends.filter((k) => k < beat).pop() ?? 0);
-  };
+  const deck: Deck = new Deck(() => movie, {
+    draw: (svg) => {
+      stage.innerHTML = svg;
+      counter.textContent = deck.counter();
+    },
+    moved: () => {
+      counter.classList.add('show');
+      clearTimeout(counterTimer);
+      counterTimer = window.setTimeout(() => counter.classList.remove('show'), 1200);
+      if (speaker && !speaker.win.closed) speaker.view.show(deck.speaker());
+    },
+  });
+  let counterTimer = 0;
   const toggleFullscreen = () => (document.fullscreenElement ? document.exitFullscreen() : root.requestFullscreen()).catch(() => {});
 
-  root.onclick = advance;
+  root.onclick = (e) => deck.click(e);
   root.oncontextmenu = (e) => {
     e.preventDefault();
-    goTo(beat - 1);
+    deck.back();
   };
   window.addEventListener('keydown', (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    const k = e.key;
-    if ([' ', 'ArrowRight', 'ArrowDown', 'PageDown', 'Enter', 'n'].includes(k)) advance();
-    else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace', 'p'].includes(k)) goTo(animStart !== null ? beat : beat - 1);
-    else if (k === 'Home') goTo(first);
-    else if (k === 'End') goTo(movie.beats.length);
-    else if (k === ']') goTo(chapterBeat(1));
-    else if (k === '[') goTo(chapterBeat(-1));
-    else if (k === 'f') toggleFullscreen();
+    if (deck.key(e)) {
+      /* navigation */
+    } else if (e.key === 'f') toggleFullscreen();
+    else if (e.key === 's') openSpeaker();
     else return;
     e.preventDefault();
   });
 
   fit();
   // deep link: #slide=3 opens on slide 3 (as the counter numbers them)
-  goTo(first + (+(new URLSearchParams(location.hash.slice(1)).get('slide') ?? 0) || 0));
+  deck.goTo(deck.first + (+(new URLSearchParams(location.hash.slice(1)).get('slide') ?? 0) || 0));
   root.focus();
 }
 

@@ -12,7 +12,7 @@ import type { WidgetDef } from './widget.ts';
 import type { EmojiProvider } from './emoji.ts';
 import type { ImageProvider } from './image.ts';
 import { TimelineRecorder, type Timeline } from './timeline.ts';
-import { applyVoice, estimateDuration, narrationRequest, sayVoice, videoVoice, type NarrationLookup, type NarrationRequest, type ProjectVoice } from './narration.ts';
+import { applyVoice, estimateDuration, spokenText, narrationRequest, sayVoice, videoVoice, type NarrationLookup, type NarrationRequest, type ProjectVoice } from './narration.ts';
 
 export interface VideoConfig {
   width: number;
@@ -74,6 +74,14 @@ export interface Beat {
   chapter: number;
   /** line of the frame, step or `then` that starts it */
   line: number;
+  /** how it animates (for jumps, which play it from another slide) */
+  kind: TransitionKind;
+  style?: TransitionStyle;
+  ease: string;
+  /** speaker notes (`note "..."`) of this frame, step or `then` sub-step */
+  notes: string[];
+  /** its narration (`say`), shown with the notes */
+  spoken: string[];
 }
 
 /** A page of the printed version (PDF): the picture once a transition is done. */
@@ -133,6 +141,39 @@ export class Movie {
 
   slideSvgAt(beat: number, elapsed = 0, extraDefs = ''): string {
     return frameToSVG(this.slideFrameAt(beat, elapsed), this.video.width, this.video.height, this.video.background, this.video.theme, extraDefs);
+  }
+
+  /**
+   * A jump while presenting (a link, or a key that skips around): the picture
+   * `elapsed` ms into the transition from slide `from` to slide `to`, played
+   * the way the transition into `to` is written; going back out of a slide
+   * that was zoomed into zooms out again. Done when elapsed >= jumpDuration().
+   */
+  jumpSvgAt(from: number, to: number, elapsed: number, extraDefs = ''): string {
+    const j = this.jumpTransition(from, to);
+    let frame = this.slideFrameAt(to);
+    if (j && elapsed < j.duration) frame = interpolate(this.slideFrameAt(from), frame, (easings[j.ease] ?? easings['ease-in-out'])(Math.max(0, elapsed) / j.duration), j.kind, j.style);
+    return frameToSVG(frame, this.video.width, this.video.height, this.video.background, this.video.theme, extraDefs);
+  }
+
+  jumpDuration(from: number, to: number): number {
+    return this.jumpTransition(from, to)?.duration ?? 0;
+  }
+
+  private jumpTransition(from: number, to: number): { kind: TransitionKind; style?: TransitionStyle; ease: string; duration: number } | undefined {
+    const span = (b: Beat) => (b.end > b.start ? b.end - b.start : this.video.transition);
+    const left = this.beats[from - 1];
+    if (to < from && left && (left.kind === 'zoom-in' || left.kind === 'zoom-out'))
+      return { kind: left.kind === 'zoom-in' ? 'zoom-out' : 'zoom-in', style: left.style, ease: left.ease, duration: span(left) };
+    const b = this.beats[to - 1];
+    return b && { kind: b.kind === 'cut' ? 'morph' : b.kind, style: b.style, ease: b.ease, duration: span(b) };
+  }
+
+  /** The slide (number of beats applied) that shows a frame or step: the end of its first transition. */
+  beatOf(name: string): number | undefined {
+    const ch = this.chapters.findIndex((c) => c.name === name);
+    const k = this.beats.findIndex((b) => b.chapter === ch);
+    return ch < 0 || k < 0 ? undefined : k + 1;
   }
 
   /**
@@ -220,6 +261,11 @@ export function compile(src: string, opts: CompileOptions = {}): Movie {
   const segments: Segment[] = [];
   const chapters: Chapter[] = [];
   const beats: Beat[] = [];
+  /** link targets used, with where they first appear */
+  const links = new Map<string, Pos>();
+  /** zoom targets (on the slide zoomed from, which a link may choose: anywhere in the deck will do) */
+  const zoomTargets = new Map<string, Pos>();
+  const widgetNames = new Set<string>();
   let state = emptyState();
   let current = build(state, { line: 1, col: 1 });
   let t = 0;
@@ -289,10 +335,27 @@ export function compile(src: string, opts: CompileOptions = {}): Movie {
     for (const [gi, g] of groups.entries()) {
       // narration starts together with its (sub)step
       for (const s of g) if (s.t === 'say') spokenUntil = Math.max(spokenUntil, say(s));
-      builder.apply(next, g.filter((s) => s.t !== 'say'));
+      builder.apply(next, g.filter((s) => s.t !== 'say' && s.t !== 'note'));
       const snapshot = structuredClone(next);
       const target = build(snapshot, item.pos);
-      beats.push({ start: t, end: t + Math.max(0, o.duration), frame: target, chapter: chapters.length - 1, line: groupLines[gi] });
+      if (o.style.target && !zoomTargets.has(o.style.target)) zoomTargets.set(o.style.target, item.pos);
+      Object.keys(target.boxes ?? {}).forEach((n) => widgetNames.add(n));
+      for (const n of target.nodes) {
+        const l = n.attrs['data-link'];
+        if (typeof l === 'string' && !links.has(l)) links.set(l, item.pos);
+      }
+      beats.push({
+        start: t,
+        end: t + Math.max(0, o.duration),
+        frame: target,
+        chapter: chapters.length - 1,
+        line: groupLines[gi],
+        kind: o.kind,
+        style: o.style,
+        ease: o.easeName,
+        notes: g.flatMap((s) => (s.t === 'note' ? [s.text] : [])),
+        spoken: g.flatMap((s) => (s.t === 'say' ? [spokenText(s.text)] : [])),
+      });
       const d = Math.max(0, o.duration);
       step.transitions.push({ start: t, end: t + d, kind: o.kind, ease: o.easeName, line: groupLines[gi] });
       rec.group(g, t, d, snapshot.widgets);
@@ -312,6 +375,11 @@ export function compile(src: string, opts: CompileOptions = {}): Movie {
     step.end = t;
   }
   if (t === 0) hold(1000);
+  // links must lead somewhere: a frame or step name, or a URL
+  for (const [l, pos] of links)
+    if (!/^(https?:|mailto:)/.test(l) && !chapters.some((c) => c.name === l))
+      fail(`link "${l}" doesn't match any frame or step name (${chapters.map((c) => `"${c.name}"`).join(', ')}) or URL`, pos);
+  for (const [name, pos] of zoomTargets) if (!widgetNames.has(name)) fail(`zoom target '${name}' isn't a widget on any slide`, pos);
   return new Movie(video, segments, chapters, t, narration, beats, rec.finish(t));
 }
 
@@ -381,7 +449,7 @@ function padding(v: Value | undefined, width: number, height: number): Padding {
   return p;
 }
 
-const TRANSITIONS: TransitionKind[] = ['morph', 'fade', 'cut', 'wipe', 'iris', 'slide', 'push'];
+const TRANSITIONS: TransitionKind[] = ['morph', 'fade', 'cut', 'wipe', 'iris', 'slide', 'push', 'zoom-in', 'zoom-out'];
 
 function stepOptions(opts: Expr[], video: VideoConfig, firstFrame: boolean) {
   let duration = firstFrame ? 0 : video.transition;
@@ -411,12 +479,14 @@ function stepOptions(opts: Expr[], video: VideoConfig, firstFrame: boolean) {
           style.direction = (DIRECTIONS as string[]).includes(str(x)) ? (str(x) as Direction) : fail(`unknown direction '${str(x)}' (${DIRECTIONS.join(', ')})`, e.pos);
         else if (k === 'shape')
           style.shape = (IRIS_SHAPES as string[]).includes(str(x)) ? (str(x) as IrisShape) : fail(`unknown iris shape '${str(x)}' (${IRIS_SHAPES.join(', ')})`, e.pos);
-        else fail(`unknown step option '${k}' (hold, duration, ease, direction, shape)`, e.pos);
+        else if (k === 'target') style.target = str(x);
+        else fail(`unknown step option '${k}' (hold, duration, ease, direction, shape, target)`, e.pos);
       }
     } else fail(`unknown step option '${str(v)}'. Use a duration, an easing (${Object.keys(easings).join(', ')}), a transition (${TRANSITIONS.join('|')}), or hold: <dur>`, e.pos);
   }
   if (style.direction && kind !== 'wipe' && kind !== 'slide' && kind !== 'push') fail(`'direction' is for wipe, slide and push transitions`, opts[0]?.pos);
   if (style.shape && kind !== 'iris') fail(`'shape' is for iris transitions`, opts[0]?.pos);
+  if (style.target && kind !== 'zoom-in' && kind !== 'zoom-out') fail(`'target' is for zoom-in and zoom-out transitions`, opts[0]?.pos);
   return { duration, ease: easings[easeName], easeName, kind, style, hold, holdSet };
 }
 

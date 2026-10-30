@@ -29,6 +29,7 @@ step "append" (800ms, ease-out) {
 | `step ["name"] [(options)] { ... }` | **Changes** to the current scene (alias: `transition`). |
 | `wait <duration>` | Hold the current picture. |
 | `say "text" [(voice options)]` | Narration over the current picture (see [Narration](#narration-tts)). |
+| `note "text"` | Speaker notes (inside frames and steps, alias `notes`): shown in the speaker view, never on the slide. See [Presenting](#presenting). |
 | `voice { speaker: ..., ... }` | Change the default voice from here on. |
 
 Each `frame`/`step` becomes a chapter in the player, named by its string, and
@@ -61,12 +62,18 @@ Write the options in parentheses, in any order: `step "x" (1s, back-out, fade, h
   - `iris`: a growing shape from the center reveals it. `shape: circle` (default), `diamond`, `square` or `star`.
   - `slide`: the next picture slides in over the current one. `direction:` where it moves (default `left`, so it comes in from the right).
   - `push`: like `slide`, but it pushes the current picture out.
+  - `zoom-in`: Prezi-style. The camera flies into `target:` (a widget of the current slide) and the
+    next slide opens up out of it. Without a target it zooms into the middle.
+  - `zoom-out`: the way back. The current slide shrinks into `target:` (a widget of the next slide)
+    while the camera pulls back to show it.
 - `hold: <dur>`: the pause after the step.
 
 ```kino
 frame "Results" (wipe, 800ms) { ... }
 frame "Q&A" (iris, 1s, shape: star) { ... }
 frame "Part 2" (push, direction: up) { ... }
+frame "Storage" (zoom-in, target: storage, 1.2s) { ... }   // fly into the `storage` box
+frame "Overview" (zoom-out, target: storage) { ... }       // and back out of it
 ```
 
 The first `frame` appears instantly unless it has options such as `(fade)` or `(600ms)`.
@@ -98,6 +105,7 @@ name.method(args...)                                 // call a widget method
 name[2].method(args...)                              // same as name.method(2, args...)
 a.part -> b[0] [{ props }]                           // arrow between anchors (-->: dashed)
 p: a.part -> b[0] [{ props }]                        // named arrow (so you can change it later)
+note "Mention the 3x speedup."                       // speaker notes for this (sub)step
 remove a, b                                          // delete widgets (they play their exit effect); a group goes with its members, arrows with what they point at
 say "Some narration" [(speaker: Luna)]               // spoken while this (sub)step animates
 then                                                 // (steps only) start a new sub-step
@@ -124,6 +132,23 @@ Statements are separated by newlines or `;`. Comments are `// ...`, `/* ... */`,
 **Bare words.** A bare identifier is a reference, but if the property expects
 text it means the word itself. So `color: warn`, `font: mono`, `origin: center`
 and `fields: [ptr, len, cap]` all work without quotes.
+
+## Text styles
+
+Text in `label`, `box`, `list` items and `callout` can mix styles, Markdown-like:
+
+| Write | Shows |
+|---|---|
+| `**bold**` | bold |
+| `*italic*` | slanted |
+| `` `code` `` | code font on a small chip |
+| `{good: text}` | text in a color: a theme color (`accent`, `bad`, ...) or `#hex` |
+
+```kino
+t: label { text: "Latency is **down** by {good: 40%} after `zstd`" }
+```
+
+Text without markup is unchanged; `*` between words or digits (`2*3`) stays as written.
 
 ## Positioning
 
@@ -157,6 +182,8 @@ the screen.
 | `z` | stacking order (higher is on top; cursors default to 100) |
 | `enter`, `exit` | effect when parts appear/disappear: `fade`, `pop`, `draw`, `slide-up`, `slide-down`, `slide-left`, `slide-right`, `none` |
 | `group` | the [`group`](#group) the widget belongs to: it moves, scales, turns, fades and leaves with it |
+| `link` | while presenting, clicking it jumps to that frame or step (by name, with that slide's transition), or opens a URL: `link: "Storage"`, `link: "https://..."` |
+| `minZoom`, `maxZoom` | shown only while the camera zoom is at least / at most this (details that appear as you zoom in, labels that only the overview needs). Changing zoom fades them. |
 | `panel` | wrap the widget in a panel: `panel: "Register file · one M1 core"` (uppercase caption) or `panel: true` (no caption) |
 | `panelGlow` | `true` or a color: glowing panel border (animates on/off) |
 | `panelColor`, `panelPadding` | caption color (default `caption`), inner padding (22) |
@@ -245,6 +272,30 @@ and the MP4/PDF export quality. Environment variables win over the file: `ELEVEN
 `OPENAI_API_KEY`, `ELEVENLABS_BASE_URL`, `OPENAI_BASE_URL`, `KINO_TTS_URL`, `KINO_CACHE`.
 
 Clips are cached by text + voice + provider, so each line is generated (and billed) once.
+
+## Presenting
+
+Present mode (and the exported HTML) plays one transition per click. While presenting:
+
+- **Links**: a widget with `link: "Step name"` jumps there when clicked, playing that slide's
+  transition from the current one. With `zoom-in`/`zoom-out` transitions and an overview slide that
+  links to each topic, this is a Prezi-style deck: fly into a topic, then link back to the overview.
+- **Speaker view** (`s`, or **Speaker** in the studio): a second window with the current and next
+  slide, the notes (`note "..."`) and narration of the current step, a timer (click to restart) and
+  the clock. It follows the presentation, and its keys move it too.
+
+```kino
+frame "Overview" {
+  note "Three parts; we'll zoom into each."
+  ing: box at (150, 280) { text: "Ingest", link: "Ingest" }
+  sto: box at (500, 280) { text: "Storage", link: "Storage" }
+  hint: label at below(sto, 10) { text: "parts, merges", size: 14, minZoom: 2 }
+}
+frame "Storage" (zoom-in, target: sto) {
+  back: label at (40, 30) { text: "← Overview", link: "Overview" }
+  ...
+}
+```
 
 ## Emphasis actions
 
@@ -467,6 +518,21 @@ step { cluster.at = (500, 120); cluster.scale = 1.3 }
 step { cluster.rotate = -8; cluster.pulse() }
 ```
 
+### `chart`
+
+Bar, line and pie charts. Items keep identity, so changing values grows and
+shrinks bars, moves points and turns pie slices.
+
+- Props: `type` (`bar`|`line`|`pie`), `values` + `labels`, or `data: { Mon: 3, Tue: 7 }`, `max` (auto: a round number above the data), `width` (560), `height` (300), `color`, `colors` (a list, or `auto` for one theme color each; pies use `auto` unless given), `unit` (`"ms"`, appended to values), `valueLabels` (true), `grid` (true), `hole` (pie: 0..0.9 for a donut), `size` (18).
+- Methods: `set(i, v)` (also `c[i] = v`), `push(label, v)`, `remove(i)`, `highlight(i, color)`, `unhighlight(i?)`. Assigning `values` keeps bars by position; assigning `data` keeps them by label.
+- Anchors: `c[i]` (a bar, point or slice).
+
+```kino
+lat: chart at (80, 120) { values: [120, 80, 95], labels: ["v1", "v2", "v3"], unit: "ms" }
+step { lat.values = [60, 40, 55]; lat.push("v4", 25); lat.highlight(3, good) }
+mix: chart { type: pie, data: { Logs: 50, Metrics: 30, Traces: 20 }, colors: auto, hole: 0.5 }
+```
+
 ### `callout` (overlay)
 A note attached to anything: a rounded bubble, a dashed leader line and a dot
 on the target. It stays inside the frame.
@@ -508,7 +574,7 @@ stmt      = IDENT ":" IDENT [ "at" expr ] [ props ]          (* declaration *)
           | [ IDENT ":" ] path ("->" | "-->") expr [ props ]  (* arrow *)
           | path "=" expr | path "(" args ")" | path props
           | "remove" IDENT { "," IDENT } | "then"
-          | "say" STRING [ "(" opts ")" ] ;
+          | "say" STRING [ "(" opts ")" ] | ("note" | "notes") STRING ;
 path      = IDENT { "." IDENT | "[" expr "]" } ;
 props     = "{" { (IDENT | STRING) ":" expr [ "," | ";" ] } "}" ;
 expr      = NUMBER | DURATION | STRING | COLOR | "true" | "false" | "_" | "null"

@@ -42,7 +42,8 @@ src/core/       values, scene (statement execution), render (layout), animate
                 (interpolation + effects), movie (timeline), timeline (steps and
                 element lifespans for the studio), svg, theme, text metrics
 src/widgets/    built-in widgets
-frontend/       Kino Studio UI (React + Vite): preview, timeline, source, agent terminal
+frontend/       Kino Studio UI (React + Vite): preview, timeline, source, agent terminal;
+                present.ts (presenting and the speaker view, shared with the HTML player)
 main.go         Kino Studio (Wails 3): embeds frontend/dist; `kino serve` for browsers
 internal/app/   studio backend: projects, file watching, narration/image endpoints
 internal/terminal/  agent terminals (PTYs)    internal/agentctx/  context files for agents

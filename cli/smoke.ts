@@ -2,7 +2,7 @@
 // plus a few targeted checks of DSL behaviour.
 import { readdirSync, readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
-import { collectNarration, compile, contactSheetSvg, DEFAULT_TTS_MODEL, extractImages, imageAsset, imageSize, KinoError, sheetLayout } from '../src/index.ts';
+import { collectNarration, compile, contactSheetSvg, DEFAULT_TTS_MODEL, extractImages, imageAsset, imageSize, KinoError, sheetLayout, themes } from '../src/index.ts';
 import { gauge } from '../examples/widgets/gauge.ts';
 import { twemoji } from '../src/node/emoji.ts';
 import { Resvg } from '@resvg/resvg-js';
@@ -541,6 +541,80 @@ test('contact sheet: a labeled tile per page', () => {
   assert.equal((sheet.svg.match(/<image /g) ?? []).length, 3);
   assert.match(sheet.svg, />line 3</);
   assert.equal(sheet.width, 16 * 2 + 2 * 480 + 14);
+});
+
+test('rich text: bold, italic, code and colors; plain text is untouched', () => {
+  const svg = (t: string, w = 'label') => compile(`frame { a: ${w} { text: ${JSON.stringify(t)} } }`).svgAt(0);
+  const plain = svg('a * b and 2*3');
+  assert.equal((plain.match(/<text /g) ?? []).length, 1);
+  const rich = svg('is **fast** and *new*, see `zstd` in {good: green}');
+  assert.match(rich, /font-weight="700"[^>]*>fast</);
+  assert.match(rich, /skewX\(-12\)[^>]*>new</);
+  assert.match(rich, /font-family="JetBrains Mono[^"]*"[^>]*>zstd</);
+  assert.match(rich, new RegExp(`fill="${themes.neon.good}"[^>]*>green<`));
+  assert.doesNotMatch(rich, /\*\*|`|\{good/);
+  // an unknown color name stays as written
+  assert.match(svg('{nope: x}'), />\{nope: x\}</);
+  // caps keep color names
+  assert.match(compile('frame { a: label { text: "{accent: hi}", caps: true } }').svgAt(0), new RegExp(`fill="${themes.neon.accent}"[^>]*>HI<`));
+  assert.match(svg('**b**', 'box'), /font-weight="700"[^>]*>b</);
+  assert.match(compile('frame { c: callout { target: (10, 10), text: "**b**" } }').svgAt(0), /font-weight="700"[^>]*>b</);
+  assert.match(compile('frame { l: list { items: ["x **y**"] } }').svgAt(0), /font-weight="700"[^>]*>y</);
+});
+
+test('chart: bars keep identity, pies turn, lines move', () => {
+  const m = compile('frame { c: chart { values: [10, 20], labels: [a, b] } }\nstep { c.values = [20, 10]; c.push("c", 5) }');
+  const bar = (svg: string) => [...svg.matchAll(/<rect x="([\d.]+)" y="([\d.]+)" width="[\d.]+" height="([\d.]+)"[^>]*stroke-width="1.5"/g)].map((x) => +x[3]);
+  const [a0, b0] = bar(m.svgAt(0));
+  assert.ok(b0 > a0);
+  const end = bar(m.svgAt(m.duration));
+  assert.equal(end.length, 3);
+  assert.ok(end[0] > end[1] && end[1] > end[2]);
+  // halfway, the bars are in between (they grow, not crossfade)
+  const mid = bar(m.svgAt(m.chapters[1].time + 350));
+  assert.ok(mid[0] > a0 && mid[0] < end[0]);
+  // data by label: ids follow labels
+  const pie = compile('frame { p: chart { type: pie, data: { x: 1, y: 3 } } }\nstep { p.data = { y: 1, x: 3 } }');
+  assert.match(pie.svgAt(0), />y 75%</);
+  assert.match(pie.svgAt(pie.duration), />x 75%</);
+  assert.match(compile('frame { l: chart { type: line, values: [1, 3, 2] } }').svgAt(0), /<path d="M[^"]*L[^"]*L/);
+  compile('frame { c: chart { values: [1, 2] }\n p: pointer { target: c[1] } }').svgAt(0);
+});
+
+test('notes: on their beats, never on the slide', () => {
+  const m = compile('frame "a" { note "first"\n b: box { text: x } }\nstep "b" { b.text = "y"\n note "second"\nthen\n notes "third"\n say "[excited] Spoken line" }');
+  assert.deepEqual(m.beats.map((b) => b.notes), [['first'], ['second'], ['third']]);
+  assert.deepEqual(m.beats[2].spoken, ['Spoken line']);
+  assert.doesNotMatch(m.svgAt(m.duration), /first|second|third/);
+});
+
+test('links, zoom transitions and zoom-dependent details', () => {
+  const src = 'frame "Overview" { a: box at (100, 100) { text: A, link: "Detail" }\n d: label at (100, 200) { text: tiny, minZoom: 2 }\n o: label at (300, 200) { text: big, maxZoom: 1.5 } }\n' +
+    'step "close" { camera.focus(a, 3) }\nframe "Detail" (zoom-in, target: a, 1s, linear) { t: title { text: Inside } }';
+  const m = compile(src);
+  assert.match(m.slideSvgAt(1), /data-link="Detail"/);
+  assert.doesNotMatch(m.slideSvgAt(1), />tiny</);
+  assert.match(m.slideSvgAt(1), />big</);
+  assert.match(m.slideSvgAt(2), />tiny</);
+  assert.doesNotMatch(m.slideSvgAt(2), />big</);
+  assert.equal(m.beatOf('Detail'), 3);
+  // jumping from the overview plays the zoom: both slides on screen, the new one scaled down
+  const jump = m.jumpSvgAt(1, 3, 300);
+  assert.match(jump, />A</);
+  assert.match(jump, /Inside[^]*|scale\(/);
+  assert.match(jump, /translate\([-\d.]+ [-\d.]+\) scale\(0\.\d+\)/);
+  assert.match(m.jumpSvgAt(1, 3, 5000), />Inside</);
+  // jumping back out of a zoomed-into slide zooms out (the detail shrinks into its box)
+  const back = m.jumpSvgAt(3, 1, 300);
+  assert.match(back, />Inside</);
+  assert.match(back, />A</);
+  assert.match(back, /scale\(0\.\d+\)/);
+  assert.throws(() => compile(src.replace('link: "Detail"', 'link: "Nowhere"')), /link "Nowhere" doesn't match/);
+  compile(src.replace('link: "Detail"', 'link: "https://example.com"'));
+  assert.throws(() => compile(src.replace('target: a', 'target: zz')), /zoom target 'zz' isn't a widget/);
+  assert.throws(() => compile(src.replace('(zoom-in, target: a', '(fade, target: a')), /'target' is for zoom-in and zoom-out/);
+  // links survive the paper themes
+  for (const theme of ['sketch', 'comic', 'pixel', 'paper-cut', 'whiteboard']) assert.match(compile(src, { theme }).slideSvgAt(1), /data-link="Detail"/, theme);
 });
 
 console.log(failures ? `\n${failures} failing` : '\nall passed');

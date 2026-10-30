@@ -2,7 +2,7 @@
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from '@codemirror/language';
 import { tags as t } from '@lezer/highlight';
 
-const KEYWORDS = /^(video|frame|step|then|wait|say|voice|remove|at)\b/;
+const KEYWORDS = /^(video|frame|step|then|wait|say|note|voice|remove|at)\b/;
 const ATOMS = /^(true|false|null|morph|fade|cut)\b/;
 
 export const kinoLanguage = StreamLanguage.define<{ inRaw: boolean; declType: boolean }>({

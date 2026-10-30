@@ -350,6 +350,16 @@ code {
   height: 100%;
   line-height: 0;
 }
+.slide-stage svg * {
+  pointer-events: none;
+}
+
+/* links are the only clickable shapes (overlays like paper grain let clicks through) */
+.slide-stage svg [data-link] {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
 .slide-stage svg {
   width: 100%;
   height: 100%;

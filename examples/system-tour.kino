@@ -1,0 +1,62 @@
+// A Prezi-style tour: an overview whose boxes link to their topics. Each topic
+// flies out of its box (zoom-in) and links back to the overview (which zooms
+// back out). Press `s` while presenting for the speaker notes.
+video { theme: blueprint, size: (1280, 720) }
+
+frame "Overview" {
+  note "Three stages. Click a box to fly into it; the arrow on each topic comes back here."
+  head: label at (640, 70) { text: "How a log line travels", size: 40, align: middle, origin: top }
+  ing: box at (110, 300) { text: "Ingest", width: 280, height: 150, size: 30, link: "Ingest" }
+  sto: box at (500, 300) { text: "Storage", width: 280, height: 150, size: 30, link: "Storage" }
+  qry: box at (890, 300) { text: "Query", width: 280, height: 150, size: 30, link: "Query" }
+  ing -> sto
+  sto -> qry
+  d1: label at (530, 405) { text: "parts · merges · `zstd`", size: 13, minZoom: 2 }
+  tip: label at (640, 560) { text: "*click a stage to zoom in*", size: 20, align: middle, origin: top, color: muted, maxZoom: 1.5 }
+}
+
+step "peek" {
+  note "A peek at the storage box: details show up only this close."
+  camera.focus(sto, 2.6)
+}
+
+step "back" { camera.reset() }
+
+frame "Ingest" (zoom-in, target: ing, 1200ms) {
+  note "Agents batch lines; the ingester parses fields and routes by stream."
+  t: label at (80, 70) { text: "Ingest", size: 44, weight: 700 }
+  steps: list at (80, 170) { items: ["Agents **batch** log lines", "Fields parsed into `_msg`, `_time`, labels", "Routed by {accent: stream}"], size: 28 }
+  back: label at (80, 620) { text: "← Overview", size: 22, color: accent, link: "Overview" }
+}
+
+frame "Storage" (zoom-in, target: sto, 1200ms) {
+  note "Columns compress well: similar values sit together. Point at the zstd bar."
+  t: label at (80, 70) { text: "Storage", size: 44, weight: 700 }
+  ratio: chart at (80, 160) { values: [1, 4, 9, 14], labels: ["raw", "columns", "dict", "zstd"], unit: "x", width: 620, height: 340 }
+  mix: chart at (740, 190) { type: pie, data: { Logs: 62, Indexes: 23, Metadata: 15 }, width: 260, height: 260, hole: 0.55 }
+  back: label at (80, 620) { text: "← Overview", size: 22, color: accent, link: "Overview" }
+}
+
+step "zstd" {
+  note "Most of the win comes from the last step."
+  ratio.highlight(3, good)
+  ratio.values = [1, 4, 9, 18]
+}
+
+frame "Query" (zoom-in, target: qry, 1200ms) {
+  note "Filters run on compressed blocks; most blocks are skipped."
+  t: label at (80, 70) { text: "Query", size: 44, weight: 700 }
+  q: code at (80, 170) { code: `_time:5m error | stats count() by (host)`, lang: sql, size: 26 }
+  scan: chart at (80, 300) { type: line, values: [100, 40, 12, 5], labels: ["all", "time", "bloom", "match"], unit: "%", width: 700, height: 280 }
+  back: label at (80, 620) { text: "← Overview", size: 22, color: accent, link: "Overview" }
+}
+
+frame "Overview again" (zoom-out, target: qry, 1200ms) {
+  note "And back to the big picture."
+  head: label at (640, 70) { text: "How a log line travels", size: 40, align: middle, origin: top }
+  ing: box at (110, 300) { text: "Ingest", width: 280, height: 150, size: 30, link: "Ingest" }
+  sto: box at (500, 300) { text: "Storage", width: 280, height: 150, size: 30, link: "Storage" }
+  qry: box at (890, 300) { text: "Query", width: 280, height: 150, size: 30, link: "Query" }
+  ing -> sto
+  sto -> qry
+}

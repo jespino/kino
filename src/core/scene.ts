@@ -22,7 +22,7 @@ export interface SceneState {
 }
 
 /** Props every widget understands, handled by the engine. */
-export const COMMON_DEFAULTS: Props = { at: null, origin: 'top-left', opacity: 1, z: 0, enter: 'fade', exit: 'fade', action: null, group: null, panel: null, panelGlow: false, panelColor: 'caption' };
+export const COMMON_DEFAULTS: Props = { at: null, origin: 'top-left', opacity: 1, z: 0, enter: 'fade', exit: 'fade', action: null, group: null, link: null, minZoom: 0, maxZoom: null, panel: null, panelGlow: false, panelColor: 'caption' };
 
 /** emphasis methods every widget has: they play during the step that calls them */
 export const EMPHASIS = ['bounce', 'shake', 'pulse', 'spin', 'wiggle', 'tada', 'jump'];
@@ -82,6 +82,7 @@ export class SceneBuilder {
         return this.call(state, s.target.map((x) => ('name' in x ? x.name : (evaluate(x.index) as string | number))), s.method, s.args.map(evaluate), s.pos);
       case 'then':
       case 'say':
+      case 'note':
         return;
     }
   }

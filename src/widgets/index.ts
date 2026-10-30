@@ -17,8 +17,9 @@ import { memory } from './memory.ts';
 import { bits } from './bits.ts';
 import { brace, callout, spotlight } from './annotate.ts';
 import { group } from './group.ts';
+import { chart } from './chart.ts';
 
-export const builtinWidgets: WidgetDef<any>[] = [label, box, circle, button, array, struct, matrix, table, listWidget, code, tabs, title, emoji, image, merge, tree, memory, bits, arrow, pointer, cursor, callout, brace, spotlight, group];
+export const builtinWidgets: WidgetDef<any>[] = [label, box, circle, button, array, struct, matrix, table, listWidget, code, tabs, title, emoji, image, merge, tree, memory, bits, arrow, pointer, cursor, callout, brace, spotlight, group, chart];
 
 export class WidgetRegistry {
   private defs = new Map<string, WidgetDef<any>>();

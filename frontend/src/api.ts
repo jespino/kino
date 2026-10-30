@@ -168,6 +168,20 @@ export function on<T>(name: string, fn: (data: T) => void): () => void {
   };
 }
 
+/**
+ * Events between the studio's windows (the speaker view): Wails events in
+ * the app, a BroadcastChannel between browser tabs.
+ */
+const tabs = !isWails && typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('kino') : null;
+if (tabs) tabs.onmessage = (ev: MessageEvent<{ name: string; data: unknown }>) => listeners.get(ev.data.name)?.forEach((fn) => fn(ev.data.data));
+
+export async function broadcast(name: string, data: unknown) {
+  if (isWails) {
+    await ready;
+    await wails!.Events.Emit(name, data);
+  } else tabs?.postMessage({ name, data });
+}
+
 export const errorText = (e: unknown) => String(e instanceof Error ? e.message : e).replace(/^Error: /, '');
 
 export const api = {
@@ -183,6 +197,8 @@ export const api = {
   chooseDirectory: (title: string, canCreate: boolean) => call<string>('ChooseDirectory', title, canCreate),
   saveSource: (source: string) => call<void>('SaveSource', source),
   reportStatus: (source: string, status: Status) => call<void>('ReportStatus', source, status),
+  /** false when the shell can't open native windows (a browser: use window.open) */
+  openSpeakerWindow: () => call<boolean>('OpenSpeakerWindow'),
   /** .kino/sheet.png (PNG bytes, base64) for the source last reported */
   reportSheet: (source: string, png: string) => call<void>('ReportSheet', source, png),
   harnesses: () => call<Harness[]>('Harnesses'),
@@ -202,3 +218,7 @@ export const EVENT_PROJECT = 'project:changed';
 export const EVENT_SOURCE = 'project:source';
 export const EVENT_TERMINAL_DATA = 'terminal:data';
 export const EVENT_TERMINAL_EXIT = 'terminal:exit';
+/** presenting window → speaker view: SpeakerState (null: not presenting) */
+export const EVENT_PRESENT_SHOW = 'present:show';
+/** speaker view → presenting window: a DeckCommand, or 'hello' to get the current state */
+export const EVENT_PRESENT_CMD = 'present:cmd';

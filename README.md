@@ -98,6 +98,8 @@ A few more things you'll use soon:
   another (in Present mode, each one is its own click).
 - `a -> b` draws an arrow that follows both ends when they move.
 - `group` moves several things as one: `cluster.at = (600, 200)`.
+- `chart` draws bar, line and pie charts that animate when the numbers change.
+- Text can mix styles: `"**bold**, *italic*, `code` and {good: color}"`.
 - Between sections, a slide can `wipe`, `iris`, `slide` or `push` in:
   `frame "Part 2" (push) { ... }`.
 - `code` blocks animate edits: change the code and unchanged lines slide to
@@ -155,7 +157,26 @@ stops. Pressing again during an animation finishes it.
 | `]` / `[` | next / previous whole step |
 | Home / End | first / last |
 | `f` | switch between fullscreen and window |
+| `s` | open the speaker view |
 | Esc | leave (the studio jumps to where you were) |
+
+**Speaker view.** Press `s` (or **Speaker** in the toolbar) for a second
+window with the current and next slide, your notes and a timer. Put it on
+your laptop screen and the slides on the projector. Notes go in the script:
+
+```kino
+step {
+  note "Pause here: ask who has used zstd."
+  nums.sort()
+}
+```
+
+**Links.** Give anything a `link` and clicking it while presenting jumps to
+that slide: `link: "Demo"` (the name of a `frame` or `step`), or a web
+address. With the `zoom-in` transition you can build a Prezi-style deck: an
+overview slide whose boxes link to their topics, and each topic flies out of
+its box (`frame "Storage" (zoom-in, target: sto) { ... }`). Linking back to the
+overview zooms back out.
 
 ## Sharing your slides
 
@@ -163,8 +184,8 @@ From the studio's **Export** menu:
 
 - **Presentation (HTML):** one self-contained file that presents in any
   browser, even offline. It works like Present mode: click or Space for the
-  next step, `f` for fullscreen, and `#slide=3` at the end of the URL opens
-  slide 3.
+  next step, `f` for fullscreen, `s` for the speaker view, links work, and
+  `#slide=3` at the end of the URL opens slide 3.
 - **Slides (PDF):** one page per step and per `then`, exactly as they look when
   presenting.
 - **Video (MP4):** the whole deck as a video, with narration if it has any (see
@@ -253,6 +274,7 @@ template in Kino Studio's welcome screen.
 | [`columnar-compression.kino`](examples/columnar-compression.kino) | How log rows become compressed columns (with narration) |
 | [`tables-and-grids.kino`](examples/tables-and-grids.kino) | Sorting tables, highlighting matrices, camera moves |
 | [`ui-walkthrough.kino`](examples/ui-walkthrough.kino) | A cursor clicking a button and a checklist updating |
+| [`system-tour.kino`](examples/system-tour.kino) | A Prezi-style tour: an overview whose boxes zoom into their topics, charts, speaker notes |
 | [`emoji-fun.kino`](examples/emoji-fun.kino) | Emoji and emphasis effects (bounce, shake, spin...) |
 | [`custom-widget.kino`](examples/custom-widget.kino) | Using a widget you wrote yourself |
 

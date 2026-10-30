@@ -5,7 +5,7 @@ import { loadFonts } from '../fonts.ts';
 import { api, errorText, EVENT_PROJECT, EVENT_SOURCE, on, type Project } from './api.ts';
 import { exportFrame, exportPage, exportSlides, exportVideo, jump, play, rebuild, replaceSource } from './engine.ts';
 import { Preview } from './preview/Preview.tsx';
-import { present, Slides } from './preview/Slides.tsx';
+import { openSpeakerView, present, Slides } from './preview/Slides.tsx';
 import { ProjectMenu } from './project/ProjectMenu.tsx';
 import { ProjectPicker } from './project/ProjectPicker.tsx';
 import { Welcome } from './project/Welcome.tsx';
@@ -128,11 +128,14 @@ function Toolbar() {
           </button>
           <span className="sep" />
           <span className="split">
-            <button onClick={() => present('fullscreen')} disabled={!hasMovie} title="Fullscreen slides: each click or space plays one transition (f: switch to window)">
+            <button onClick={() => present('fullscreen')} disabled={!hasMovie} title="Fullscreen slides: each click or space plays one transition (f: switch to window, s: speaker view)">
               Present
             </button>
             <button onClick={() => present('window')} disabled={!hasMovie} title="Slides filling the window, without going fullscreen (f: switch to fullscreen)">
               Window
+            </button>
+            <button onClick={() => openSpeakerView()} disabled={!hasMovie} title="Speaker view in its own window: notes, the next slide and a timer (s while presenting)">
+              Speaker
             </button>
           </span>
           <ExportMenu />

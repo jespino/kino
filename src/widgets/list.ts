@@ -3,6 +3,7 @@ import { rect } from '../core/geometry.ts';
 import { fillTint } from '../core/color.ts';
 import { list, str, type Value } from '../core/values.ts';
 import { index, indexes, spread } from './util.ts';
+import { richMeasure, richText } from '../core/rich.ts';
 
 interface Item {
   id: string;
@@ -66,7 +67,7 @@ export const listWidget = defineWidget({
       const y = i * lh;
       const base = y + s * 0.85;
       const color = it.hl ? rc.color(it.hl, 'highlight') : rc.color(p.color, 'fg');
-      const tw = rc.measure(str(it.v), s);
+      const tw = richMeasure(rc, str(it.v), { size: s });
       nodes.push(
         h.rect(`bg:${it.id}`, indent - s * 0.3, y - s * 0.15, tw + s * 0.6, s * 1.3, { rx: 6, fill: fillTint(rc.theme, color, it.hl ? 0.14 : 0) }),
       );
@@ -79,9 +80,9 @@ export const listWidget = defineWidget({
           nodes.push(h.path(`tick:${it.id}`, `M${s * 0.18} ${y + s * 0.55} L${s * 0.36} ${y + s * 0.75} L${s * 0.68} ${y + s * 0.33}`, { stroke: rc.theme.bg, 'stroke-width': 3, fill: 'none', 'stroke-linecap': 'round' }, { enter: 'draw' }));
       }
       nodes.push(
-        h.text(`t:${it.id}`, indent, base, str(it.v), {
+        ...richText(rc, `t:${it.id}`, indent, base, str(it.v), {
           'font-size': s, 'font-family': rc.theme.fontSans, fill: color, opacity: it.done ? 0.55 : 1,
-        }, { enter: 'slide-left' }),
+        }, { size: s }, { enter: 'slide-left' }),
       );
     });
     return nodes;
@@ -90,6 +91,6 @@ export const listWidget = defineWidget({
     if (typeof path[0] !== 'number') return undefined;
     const s = p.size;
     const it = p.items[path[0]];
-    return rect(0, path[0] * s * (1 + p.gap), rc.measure(str(it?.v), s) + s * 1.6, s * 1.2);
+    return rect(0, path[0] * s * (1 + p.gap), richMeasure(rc, str(it?.v), { size: s }) + s * 1.6, s * 1.2);
   },
 });
