@@ -1,7 +1,7 @@
 // Compiling, saving and playing the open script. React components read the
 // results from the store; everything here runs outside React.
 import { collectNarration, compile, extractEmojis, extractImages, KinoError, type ImageAsset, type Movie, type NarrationRequest, type ProjectVoice } from '../kino.ts';
-import { exportHtml, exportMp4, exportPdf } from '../export.ts';
+import { exportHtml, exportMp4, exportPdf, exportSheet } from '../export.ts';
 import { customWidgets } from '../widgets.ts';
 import { Narration } from '../narration.ts';
 import { preloadEmoji, studioEmoji } from '../emoji.ts';
@@ -60,7 +60,33 @@ function reportStatus(source: string) {
         steps: movie?.timeline.steps.map(({ kind, name, start, end, line }) => ({ kind, name, start, end, line })),
         narration: movie ? { clips: new Set(movie.narration.map((c) => c.request.id)).size, missing: new Set(movie.narration.filter((c) => !c.ready).map((c) => c.request.id)).size } : undefined,
       };
-  api.reportStatus(source, status).catch(() => {});
+  api
+    .reportStatus(source, status)
+    .then(() => {
+      window.clearTimeout(sheetTimer);
+      if (status.ok) sheetTimer = window.setTimeout(() => reportSheet(source), 1000);
+    })
+    .catch(() => {});
+}
+
+let sheetTimer = 0;
+
+/** .kino/sheet.png, every page in one picture, so the agent can look at its work (only while an agent runs) */
+async function reportSheet(source: string) {
+  const movie = st().movie;
+  const stale = () => st().source !== source || st().movie !== movie;
+  if (!movie || stale()) return;
+  try {
+    if (!(await api.terminals())?.some((t) => t.running)) return;
+    const png = await exportSheet(movie, stale);
+    if (!png || stale()) return;
+    const bytes = new Uint8Array(await png.arrayBuffer());
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    await api.reportSheet(source, btoa(bin));
+  } catch (e) {
+    console.warn('contact sheet:', e);
+  }
 }
 
 let saveTimer = 0;

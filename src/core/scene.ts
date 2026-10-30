@@ -22,7 +22,7 @@ export interface SceneState {
 }
 
 /** Props every widget understands, handled by the engine. */
-export const COMMON_DEFAULTS: Props = { at: null, origin: 'top-left', opacity: 1, z: 0, enter: 'fade', exit: 'fade', action: null, panel: null, panelGlow: false, panelColor: 'caption' };
+export const COMMON_DEFAULTS: Props = { at: null, origin: 'top-left', opacity: 1, z: 0, enter: 'fade', exit: 'fade', action: null, group: null, panel: null, panelGlow: false, panelColor: 'caption' };
 
 /** emphasis methods every widget has: they play during the step that calls them */
 export const EMPHASIS = ['bounce', 'shake', 'pulse', 'spin', 'wiggle', 'tada', 'jump'];
@@ -52,7 +52,23 @@ export class SceneBuilder {
       case 'remove':
         for (const n of s.names) {
           this.find(state, n, s.pos);
-          state.widgets = state.widgets.filter((w) => w.name !== n);
+          // a group takes its members (and theirs) with it, and arrows/pointers lose what they point at
+          const gone = new Set([n]);
+          const refersToGone = (v: unknown): boolean =>
+            isRef(v as Value) ? gone.has(String((v as { $ref: unknown[] }).$ref[0])) : Array.isArray(v) ? v.some(refersToGone) : false;
+          for (let more = true; more; ) {
+            more = false;
+            for (const w of state.widgets) {
+              if (gone.has(w.name)) continue;
+              const member = isRef(w.props.group) && gone.has(String(w.props.group.$ref[0]));
+              const dangling = this.registry.get(w.type)?.overlay && Object.entries(w.props).some(([k, v]) => k !== 'at' && refersToGone(v));
+              if (member || dangling) {
+                gone.add(w.name);
+                more = true;
+              }
+            }
+          }
+          state.widgets = state.widgets.filter((w) => !gone.has(w.name));
         }
         return;
       case 'assign':

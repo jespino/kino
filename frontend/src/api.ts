@@ -183,6 +183,8 @@ export const api = {
   chooseDirectory: (title: string, canCreate: boolean) => call<string>('ChooseDirectory', title, canCreate),
   saveSource: (source: string) => call<void>('SaveSource', source),
   reportStatus: (source: string, status: Status) => call<void>('ReportStatus', source, status),
+  /** .kino/sheet.png (PNG bytes, base64) for the source last reported */
+  reportSheet: (source: string, png: string) => call<void>('ReportSheet', source, png),
   harnesses: () => call<Harness[]>('Harnesses'),
   startTerminal: (harness: string, cols: number, rows: number) => call<string>('StartTerminal', harness, cols, rows),
   terminalWrite: (id: string, data: string) => call<void>('TerminalWrite', id, data),

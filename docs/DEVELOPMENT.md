@@ -82,8 +82,10 @@ build with `wails3 task build EXTRA_TAGS=` (and `GO_TAGS=` for `make dev`).
 When an agent starts, the studio writes the context it needs into the project:
 `AGENTS.md` (plus `CLAUDE.md`/`GEMINI.md` pointing to it), the DSL reference in
 `.kino/docs/DSL.md` and the skill in `.claude/skills/kino/`. After every compile
-it writes `.kino/status.json` (errors with `line:col`, the step timeline), which
-is how the agent checks its edits without the Node CLI.
+it writes `.kino/status.json` (errors with `line:col`, the step timeline) and,
+while an agent terminal runs, `.kino/sheet.png` (every page in one picture,
+drawn in the browser), which is how the agent checks its edits without the
+Node CLI.
 
 ## Writing your own widget
 
@@ -172,4 +174,4 @@ with an LLM.
 - The studio's timeline is for reading and navigating: dragging a transition
   to change its duration isn't supported yet. The source editor has
   highlighting but no completion.
-- Grouping/nesting of widgets isn't supported yet. Images can't have rounded corners or masks.
+- Images can't have rounded corners or masks.

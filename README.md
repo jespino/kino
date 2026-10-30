@@ -97,6 +97,9 @@ A few more things you'll use soon:
 - `then` inside a step splits it into several animations that play one after
   another (in Present mode, each one is its own click).
 - `a -> b` draws an arrow that follows both ends when they move.
+- `group` moves several things as one: `cluster.at = (600, 200)`.
+- Between sections, a slide can `wipe`, `iris`, `slide` or `push` in:
+  `frame "Part 2" (push) { ... }`.
 - `code` blocks animate edits: change the code and unchanged lines slide to
   their new place.
 
@@ -316,7 +319,7 @@ Run `npm install` once. Then:
 | Command | What it does |
 |---|---|
 | `npm run check -- talk.kino` | Find errors (with line numbers) and list the steps |
-| `npm run check -- talk.kino --sheet out/sheet.png` | One picture with every step, to review the whole deck at a glance |
+| `npm run check -- talk.kino --sheet out/sheet.png` | One picture with every step and sub-step, to review the whole deck at a glance |
 | `npm run render -- talk.kino -o out/talk.pdf` | Slides as a PDF |
 | `npm run render -- talk.kino -o out/talk.mp4` | A video (`.mp4`, `.webm` or `.gif`; needs ffmpeg) |
 | `npm run render -- talk.kino --png out/slide.png --at 3.5s` | One picture at a point in time |

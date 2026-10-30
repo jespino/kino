@@ -71,6 +71,7 @@ type App struct {
 
 	tts      string // TTS server URL for tests ("" = env, settings, default)
 	inflight map[string]*call
+	status   *statusFile // what .kino/status.json holds
 }
 
 // New creates the service. docs are copied into projects for agents.
@@ -253,6 +254,15 @@ type Status struct {
 	Narration json.RawMessage `json:"narration,omitempty"`
 }
 
+// statusFile is the content of .kino/status.json.
+type statusFile struct {
+	File   string `json:"file"`
+	SHA256 string `json:"sha256"`
+	Status
+	// Sheet is set once .kino/sheet.png shows this same compile.
+	Sheet string `json:"sheet,omitempty"`
+}
+
 // ReportStatus writes .kino/status.json for the compiled source.
 func (a *App) ReportStatus(source string, st Status) error {
 	p, err := a.current()
@@ -260,16 +270,45 @@ func (a *App) ReportStatus(source string, st Status) error {
 		return err
 	}
 	sum := sha256.Sum256([]byte(source))
-	out := struct {
-		File   string `json:"file"`
-		SHA256 string `json:"sha256"`
-		Status
-	}{filepath.Base(p.Path), hex.EncodeToString(sum[:]), st}
-	b, err := json.MarshalIndent(out, "", "  ")
+	out := &statusFile{File: filepath.Base(p.Path), SHA256: hex.EncodeToString(sum[:]), Status: st}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.status = out
+	return writeStatus(p.Dir, out)
+}
+
+// ReportSheet writes .kino/sheet.png, the contact sheet of the compiled
+// source (every page, labeled with its line), and marks status.json as
+// matching it. A sheet for a source that's no longer the last reported one
+// is dropped.
+func (a *App) ReportSheet(source string, png []byte) error {
+	p, err := a.current()
 	if err != nil {
 		return err
 	}
+	sum := sha256.Sum256([]byte(source))
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.status == nil || a.status.SHA256 != hex.EncodeToString(sum[:]) {
+		return nil
+	}
 	dir := filepath.Join(p.Dir, ".kino")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	if err := writeAtomic(filepath.Join(dir, "sheet.png"), png); err != nil {
+		return err
+	}
+	a.status.Sheet = ".kino/sheet.png"
+	return writeStatus(p.Dir, a.status)
+}
+
+func writeStatus(project string, st *statusFile) error {
+	b, err := json.MarshalIndent(st, "", "  ")
+	if err != nil {
+		return err
+	}
+	dir := filepath.Join(project, ".kino")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}

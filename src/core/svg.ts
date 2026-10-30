@@ -85,6 +85,7 @@ export function frameToSVG(frame: Frame, width: number, height: number, backgrou
     grain > 0
       ? `<pattern id="kgrain" width="${GRAIN_SIZE}" height="${GRAIN_SIZE}" patternUnits="userSpaceOnUse"><image width="${GRAIN_SIZE}" height="${GRAIN_SIZE}" href="${GRAIN_PNG}"/></pattern>`
       : '',
+    ...(frame.clips ?? []).map((c, i) => `<clipPath id="kclip${i}"><path d="${c.d}" clip-rule="evenodd"/></clipPath>`),
     `</defs>`,
     `<rect ${bg} fill="${esc(background)}"/>`,
   ];
@@ -96,8 +97,12 @@ export function frameToSVG(frame: Frame, width: number, height: number, backgrou
   const edge = (+theme.edgeWidth || 0) * v.w;
   if (edge > 0 && theme.edgeLeft) parts.push(`<rect x="${fmt(v.x - 1)}" y="${fmt(v.y - 1)}" width="${fmt(edge + 1)}" height="${fmt(v.h + 2)}" fill="url(#kedgeL)"/>`);
   if (edge > 0 && theme.edgeRight) parts.push(`<rect x="${fmt(v.x + v.w - edge)}" y="${fmt(v.y - 1)}" width="${fmt(edge + 1)}" height="${fmt(v.h + 2)}" fill="url(#kedgeR)"/>`);
-  for (const node of frame.nodes) {
-    if (Number(node.attrs.opacity ?? 1) <= 0.001) continue;
+  const clips = frame.clips ?? [];
+  frame.nodes.forEach((node, i) => {
+    // whole-picture transitions: each picture is drawn clipped to its part of the screen
+    clips.forEach((c) => c.to === i && c.to > c.from && parts.push('</g>'));
+    clips.forEach((c, k) => c.from === i && c.to > c.from && parts.push(`<g clip-path="url(#kclip${k})">`));
+    if (Number(node.attrs.opacity ?? 1) <= 0.001) return;
     // hand-drawn themes redraw shapes as pencil strokes and watercolor washes, comic ones ink them,
     // pixel ones put them on a low-res grid, paper-cut ones lay them on the page as paper
     for (const n of sketchNode(node, theme).flatMap((s) => comicNode(s, theme)).flatMap((s) => pixelNode(s, theme)).flatMap((s) => paperNode(s, theme))) {
@@ -107,7 +112,8 @@ export function frameToSVG(frame: Frame, width: number, height: number, backgrou
       }
       parts.push(n.tag === 'text' ? `<text${attrs}>${esc(n.text ?? '')}</text>` : `<${n.tag}${attrs}/>`);
     }
-  }
+  });
+  clips.forEach((c) => c.to === frame.nodes.length && c.to > c.from && parts.push('</g>'));
   // comic panel: a paper gutter around an inked frame, cropping whatever reaches the edges
   const border = (+theme.frameBorder || 0) * px;
   if (border > 0) {

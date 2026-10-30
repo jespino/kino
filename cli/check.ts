@@ -1,15 +1,13 @@
 // Validate a .kino file and summarize it; optionally render a contact sheet.
 //   npm run check -- examples/go-slices.kino
-//   npm run check -- my.kino --sheet out/my-sheet.png      (one frame per step, end of each step)
+//   npm run check -- my.kino --sheet out/my-sheet.png      (every page: each step and sub-step, labeled with its line)
 //   npm run check -- my.kino --widgets my-widgets.ts
 //   npm run check -- my.kino --theme sketch --sheet out/sheet.png
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, readdirSync, mkdirSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, writeFileSync, readdirSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Resvg } from '@resvg/resvg-js';
-import { collectNarration, compile, extractEmojis, KinoError, type WidgetDef } from '../src/index.ts';
+import { collectNarration, compile, contactSheetSvg, extractEmojis, KinoError, sheetLayout, type WidgetDef } from '../src/index.ts';
 import { twemoji } from '../src/node/emoji.ts';
 import { loadImages } from '../src/node/images.ts';
 import { cachedClip } from '../src/node/tts.ts';
@@ -60,20 +58,16 @@ const sheet = opt('--sheet');
 if (sheet) {
   const fontDir = fileURLToPath(new URL('../assets/fonts/', import.meta.url));
   const fontFiles = readdirSync(fontDir).filter((f) => /\.(ttf|otf)$/.test(f)).map((f) => join(fontDir, f));
-  const tmp = mkdtempSync(join(tmpdir(), 'kino-sheet-'));
-  // the settled picture at the end of every step
-  movie.chapters.forEach((c, i) => {
-    const t = Math.max(c.time, (movie.chapters[i + 1]?.time ?? movie.duration) - 1);
-    const png = new Resvg(movie.svgAt(t), {
-      fitTo: { mode: 'width', value: 640 },
+  const raster = (svg: string, width: number) =>
+    new Resvg(svg, {
+      fitTo: { mode: 'width', value: width },
       font: { fontFiles, loadSystemFonts: true, defaultFontFamily: 'Inter', sansSerifFamily: 'Inter', monospaceFamily: 'JetBrains Mono' },
     }).render().asPng();
-    writeFileSync(join(tmp, `${String(i).padStart(3, '0')}.png`), png);
-  });
-  const cols = Math.min(3, movie.chapters.length);
-  const rows = Math.ceil(movie.chapters.length / cols);
+  // every page (what Present mode stops on), each labeled with its step and line
+  const layout = sheetLayout(movie);
+  const tiles = layout.pages.map((p) => `data:image/png;base64,${Buffer.from(raster(movie.pageSvg(p), layout.tileWidth)).toString('base64')}`);
+  const out = contactSheetSvg(movie, layout, tiles);
   mkdirSync(dirname(resolve(sheet)), { recursive: true });
-  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', '1', '-i', join(tmp, '%03d.png'), '-vf', `tile=${cols}x${rows}:padding=6:color=0x333333`, '-frames:v', '1', sheet]);
-  rmSync(tmp, { recursive: true, force: true });
-  console.log(`  sheet: ${sheet} (end of each step, left→right, top→bottom)`);
+  writeFileSync(sheet, raster(out.svg, out.width));
+  console.log(`  sheet: ${sheet} (${layout.pages.length} pages: every step and sub-step, left→right, top→bottom)`);
 }

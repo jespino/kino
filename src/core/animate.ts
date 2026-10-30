@@ -4,7 +4,18 @@ import type { Frame } from './render.ts';
 import { nodeBox } from './render.ts';
 import type { RNode } from './widget.ts';
 
-export type TransitionKind = 'morph' | 'fade' | 'cut';
+export type TransitionKind = 'morph' | 'fade' | 'cut' | 'wipe' | 'iris' | 'slide' | 'push';
+export type Direction = 'left' | 'right' | 'up' | 'down';
+export type IrisShape = 'circle' | 'diamond' | 'square' | 'star';
+export const DIRECTIONS: Direction[] = ['left', 'right', 'up', 'down'];
+export const IRIS_SHAPES: IrisShape[] = ['circle', 'diamond', 'square', 'star'];
+
+/** Options of the whole-picture transitions (wipe, iris, slide, push). */
+export interface TransitionStyle {
+  /** where things move: wipe's edge (default right), slide/push's pictures (default left) */
+  direction?: Direction;
+  shape?: IrisShape;
+}
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const COLOR_ATTRS = new Set(['fill', 'stroke', 'stop-color']);
@@ -20,7 +31,8 @@ export function still(f: Frame): Frame {
  * matched nodes tween their attributes, new ones play their enter effect,
  * vanished ones play their exit effect.
  */
-export function interpolate(A: Frame, B: Frame, p: number, kind: TransitionKind): Frame {
+export function interpolate(A: Frame, B: Frame, p: number, kind: TransitionKind, style: TransitionStyle = {}): Frame {
+  if (kind === 'wipe' || kind === 'iris' || kind === 'slide' || kind === 'push') return reveal(A, B, p, kind, style);
   const view = rect(lerp(A.view.x, B.view.x, p), lerp(A.view.y, B.view.y, p), lerp(A.view.w, B.view.w, p), lerp(A.view.h, B.view.h, p));
   const aNodes = A.nodes.filter((n) => !n.transient);
   if (kind === 'cut') return p < 1 ? { view: A.view, nodes: aNodes } : still(B);
@@ -67,6 +79,88 @@ export function interpolate(A: Frame, B: Frame, p: number, kind: TransitionKind)
     else push(out, effect(b, b.enter ?? 'fade', b.delay ? Math.max(0, Math.min(1, (p - b.delay) / (1 - b.delay))) : p));
   }
   return { view, nodes: out };
+}
+
+const MOTION: Record<Direction, [number, number]> = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] };
+
+/**
+ * Keynote-style transitions of the whole picture: the next picture is revealed
+ * by a moving edge (wipe) or a growing shape (iris), or slides in over the
+ * previous one (slide) or pushes it out (push). Each picture is clipped to its
+ * part of the screen, so nothing shows through the other's empty areas.
+ */
+function reveal(A: Frame, B: Frame, p: number, kind: TransitionKind, style: TransitionStyle): Frame {
+  const V = B.view;
+  const q = Math.max(0, Math.min(1, p));
+  const [ux, uy] = MOTION[style.direction ?? (kind === 'wipe' ? 'right' : 'left')];
+  // B covers the fraction q of the screen on the side it comes from (opposite to the motion), A the rest
+  const band = (f: number, side: 1 | -1) => {
+    // side -1: anchored where the motion comes from, 1: where it goes
+    const w = ux ? V.w * f : V.w, h = uy ? V.h * f : V.h;
+    const x = ux === side ? V.x + V.w - w : V.x, y = uy === side ? V.y + V.h - h : V.y;
+    return boxPath(x, y, w, h);
+  };
+  let clipA: string, clipB: string;
+  let offA = [0, 0], offB = [0, 0];
+  if (kind === 'iris') {
+    clipB = irisPath(style.shape ?? 'circle', V, q);
+    clipA = `${boxPath(V.x, V.y, V.w, V.h)} ${clipB}`;
+  } else {
+    clipB = band(q, -1);
+    clipA = band(1 - q, 1);
+    if (kind !== 'wipe') offB = [-ux * (1 - p) * V.w, -uy * (1 - p) * V.h];
+    if (kind === 'push') offA = [ux * p * V.w, uy * p * V.h];
+  }
+  // A is drawn in B's view: map its camera onto B's, then shift it
+  const s = V.w / A.view.w;
+  const a = A.nodes.filter((n) => !n.transient).map((n) => shift(n, V.x - A.view.x * s + offA[0], V.y - A.view.y * s + offA[1], s));
+  const b = B.nodes.filter((n) => !n.transient).map((n) => shift(n, offB[0], offB[1], 1));
+  return {
+    view: V,
+    nodes: [...a, ...b],
+    clips: [
+      { from: 0, to: a.length, d: clipA },
+      { from: a.length, to: a.length + b.length, d: clipB },
+    ],
+  };
+}
+
+const boxPath = (x: number, y: number, w: number, h: number) => `M${x} ${y}h${w}v${h}h${-w}Z`;
+
+/** The iris opening at progress q: from a point to a shape that covers the whole view. */
+function irisPath(shape: IrisShape, V: Frame['view'], q: number): string {
+  const { x: cx, y: cy } = center(V);
+  const half = Math.hypot(V.w, V.h) / 2;
+  switch (shape) {
+    case 'square': {
+      const r = (q * Math.max(V.w, V.h)) / 2;
+      return boxPath(cx - r, cy - r, 2 * r, 2 * r);
+    }
+    case 'diamond': {
+      const r = (q * (V.w + V.h)) / 2;
+      return `M${cx} ${cy - r}L${cx + r} ${cy}L${cx} ${cy + r}L${cx - r} ${cy}Z`;
+    }
+    case 'star': {
+      // the inner corners reach the screen corners at the end
+      const ri = q * half * 1.05, ro = ri * 2.2;
+      const pts = Array.from({ length: 10 }, (_, i) => {
+        const r = i % 2 ? ri : ro, a = -Math.PI / 2 + (i * Math.PI) / 5;
+        return `${+(cx + r * Math.cos(a)).toFixed(2)} ${+(cy + r * Math.sin(a)).toFixed(2)}`;
+      });
+      return `M${pts.join('L')}Z`;
+    }
+    default: {
+      const r = q * half;
+      return `M${cx - r} ${cy}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0Z`;
+    }
+  }
+}
+
+/** Move (and scale) a node in the picture without touching its own coordinates. */
+function shift(n: RNode, dx: number, dy: number, s: number): RNode {
+  if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01 && Math.abs(s - 1) < 1e-6) return n;
+  const t = Math.abs(s - 1) < 1e-6 ? `translate(${dx} ${dy})` : `translate(${dx} ${dy}) scale(${s})`;
+  return { ...n, attrs: { ...n.attrs, transform: n.attrs.transform ? `${t} ${n.attrs.transform}` : t } };
 }
 
 function push(out: RNode[], n: RNode | null) {

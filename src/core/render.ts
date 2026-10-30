@@ -1,5 +1,5 @@
 import { KinoError } from '../dsl/ast.ts';
-import { center, pathPoints, rect, translatePath, union, type Rect } from './geometry.ts';
+import { center, pathPoints, rect, transformPoint, translatePath, union, type Rect } from './geometry.ts';
 import { measure } from './text.ts';
 import { resolveColor, type Theme } from './theme.ts';
 import { GLOW_FILTER, SHADOW_FILTER } from './svg.ts';
@@ -14,6 +14,8 @@ import type { WidgetRegistry } from '../widgets/index.ts';
 export interface Frame {
   nodes: RNode[];
   view: Rect;
+  /** nodes[from..to) are drawn clipped to path `d` (canvas coordinates, even-odd); set by whole-picture transitions */
+  clips?: { from: number; to: number; d: string }[];
 }
 
 /** Space kept clear at each side of every slide (px). */
@@ -66,11 +68,17 @@ interface Placed {
   dx: number;
   dy: number;
   bbox: Rect; // global
+  /** members of groups: the groups' transforms (SVG syntax) from the group's space to the canvas */
+  xf?: string;
 }
 
 /** Lays out one scene state: resolves positions (incl. relative ones) and anchors. */
 class Layout {
   private placed = new Map<string, Placed>();
+  /** placements in the space of the widget's group (= `placed` outside groups) */
+  private local = new Map<string, Placed>();
+  /** each group's own transform, from its members' space to its parent's */
+  private groupXf = new Map<string, string>();
   private visiting = new Set<string>();
 
   constructor(
@@ -90,9 +98,13 @@ class Layout {
     const nodes: RNode[] = [];
     for (const w of order) {
       const p = this.place(w.name);
-      // emphasis (w.bounce(), w.shake()...) pivots around the widget's center
-      const act = w.props.action as { name: string; n: number } | null;
-      const action = act ? { name: act.name, id: `${act.name}:${act.n}`, cx: p.bbox.x + p.bbox.w / 2, cy: p.bbox.y + p.bbox.h / 2 } : undefined;
+      // emphasis (w.bounce(), w.shake()...) pivots around the widget's center; members join their group's
+      const chain = [w, ...this.ancestors(w.name).map((g) => this.inst(g))];
+      const actor = chain.find((x) => x.props.action);
+      const act = actor?.props.action as { name: string; n: number } | undefined;
+      const ab = actor && this.place(actor.name).bbox;
+      const action = act && ab ? { name: act.name, id: `${actor!.name}:${act.name}:${act.n}`, cx: ab.x + ab.w / 2, cy: ab.y + ab.h / 2 } : undefined;
+      const op = chain.reduce((o, x) => o * (x.props.opacity ?? 1), 1);
       for (const n of p.nodes) {
         const node: RNode = {
           ...n,
@@ -102,7 +114,6 @@ class Layout {
           // decorations (ribbons, particles) stay put while the widget itself bounces or shakes
           action: n.decor ? undefined : action,
         };
-        const op = w.props.opacity ?? 1;
         if (op !== 1) node.attrs = { ...node.attrs, opacity: num(node.attrs.opacity ?? 1) * op };
         nodes.push(node);
       }
@@ -137,13 +148,54 @@ class Layout {
     };
   }
 
+  /** The group a widget belongs to (`group: g`), if any. */
+  private groupOf(name: string): string | null {
+    const g = this.inst(name).props.group;
+    if (g === null || g === undefined || g === false) return null;
+    if (!isRef(g) || g.$ref.length !== 1) throw new KinoError(`'group' of '${name}' must name a group widget, got ${str(g)}`);
+    const gname = String(g.$ref[0]);
+    if (this.inst(gname).type !== 'group') throw new KinoError(`'${name}' has group: ${gname}, but '${gname}' is a ${this.inst(gname).type}, not a group`);
+    return gname;
+  }
+
+  /** Groups containing a widget, innermost first. */
+  private ancestors(name: string): string[] {
+    const out: string[] = [];
+    for (let g = this.groupOf(name); g; g = this.groupOf(g)) {
+      if (out.includes(g) || g === name) throw new KinoError(`group '${g}' contains itself`);
+      out.push(g);
+    }
+    return out;
+  }
+
+  /** Placement on the canvas: the placement in the group's space, moved by the groups around it. */
   private place(name: string): Placed {
     const done = this.placed.get(name);
+    if (done) return done;
+    const l = this.placeLocal(name);
+    const def = this.registry.get(this.inst(name).type)!;
+    // overlays are drawn from global anchors already
+    const xf = def.overlay ? '' : this.ancestors(name).map((g) => (this.placeLocal(g), this.groupXf.get(g)!)).reverse().join(' ');
+    const result: Placed = xf
+      ? { nodes: l.nodes.map((n) => ({ ...n, attrs: { ...n.attrs, transform: n.attrs.transform ? `${xf} ${n.attrs.transform}` : xf } })), dx: l.dx, dy: l.dy, bbox: mapRect(xf, l.bbox), xf }
+      : l;
+    this.placed.set(name, result);
+    return result;
+  }
+
+  private placeLocal(name: string): Placed {
+    const done = this.local.get(name);
     if (done) return done;
     if (this.visiting.has(name)) throw new KinoError(`circular reference while positioning '${name}'`);
     this.visiting.add(name);
     const w = this.inst(name);
     const def = this.registry.get(w.type)!;
+    if (w.type === 'group') {
+      const result = this.placeGroup(w);
+      this.visiting.delete(name);
+      this.local.set(name, result);
+      return result;
+    }
     let local = def.render(w.props, this.rc(name));
     let result: Placed;
     if (def.overlay) {
@@ -165,12 +217,36 @@ class Layout {
     }
     if (def.placed) {
       // register first: the hook may anchor to this widget's own parts
-      this.placed.set(name, result);
+      this.local.set(name, result);
+      if (!this.groupOf(name)) this.placed.set(name, result);
       result.nodes.push(...def.placed(w.props, this.rc(name), { bbox: result.bbox, dx: result.dx, dy: result.dy }));
     }
     this.visiting.delete(name);
-    this.placed.set(name, result);
+    this.local.set(name, result);
     return result;
+  }
+
+  /**
+   * A group in its parent's space: its members' box (plus its panel), moved by
+   * `at`/`origin` (members stay where they are without `at`), then scaled and
+   * turned about its center. Its nodes are only the panel; members draw themselves.
+   */
+  private placeGroup(w: Instance): Placed {
+    const members = this.state.widgets.filter((m) => m.name !== w.name && !this.registry.get(m.type)!.overlay && this.groupOf(m.name) === w.name);
+    const inner = union(members.map((m) => this.placeLocal(m.name).bbox));
+    let nodes: RNode[] = [];
+    let bb = inner;
+    if (w.props.panel !== null && w.props.panel !== undefined && w.props.panel !== false) {
+      const deco = panelNodes(w.props, inner, this.rc(w.name));
+      nodes = deco.nodes.map((n) => translateNode(n, -deco.sx, -deco.sy));
+      bb = bbox(nodes);
+    }
+    const { dx, dy } = w.props.at === null || w.props.at === undefined ? { dx: 0, dy: 0 } : this.position(w, bb);
+    const c = center(bb), s = num(w.props.scale ?? 1), r = num(w.props.rotate ?? 0);
+    // a fixed shape, so that moving, scaling and turning all tween
+    const xf = `translate(${c.x + dx} ${c.y + dy}) rotate(${r}) scale(${s}) translate(${-c.x} ${-c.y})`;
+    this.groupXf.set(w.name, xf);
+    return { nodes: nodes.map((n) => ({ ...n, attrs: { ...n.attrs, transform: n.attrs.transform ? `${xf} ${n.attrs.transform}` : xf } })), dx: 0, dy: 0, bbox: mapRect(xf, bb) };
   }
 
   /** Offset that moves the widget's local bbox to where `at` + `origin` say. */
@@ -179,8 +255,9 @@ class Layout {
     const o = originOf(str(w.props.origin ?? 'top-left'), bb);
     if (at === null || at === undefined) return { dx: -o.x + 0, dy: -o.y + 0 };
     if (isPoint(at)) return { dx: at.$pt[0] - o.x, dy: at.$pt[1] - o.y };
+    const space = this.groupOf(w.name);
     if (isRef(at)) {
-      const c = center(this.anchor(at));
+      const c = center(this.anchor(at, space));
       return { dx: c.x - o.x, dy: c.y - o.y };
     }
     if (isCall(at)) {
@@ -190,7 +267,7 @@ class Layout {
       const centerX = ['center', 'top', 'bottom'].includes(origin);
       const centerY = ['center', 'left', 'right'].includes(origin);
       if (at.$call === 'center') return { dx: this.video.width / 2 - (bb.x + bb.w / 2), dy: this.video.height / 2 - (bb.y + bb.h / 2) };
-      const r = this.anchor(target);
+      const r = this.anchor(target, space);
       const alignX = centerX ? r.x + r.w / 2 - bb.w / 2 : r.x;
       const alignY = centerY ? r.y + r.h / 2 - bb.h / 2 : r.y;
       switch (at.$call) {
@@ -210,18 +287,24 @@ class Layout {
     throw new KinoError(`'at' must be a point like (100, 200), a widget, or below(w)/right-of(w)/..., got ${str(at)}`);
   }
 
-  /** Global rect for a reference (`data[0]`), a widget name, or a point. */
-  anchor(v: Value): Rect {
+  /**
+   * Global rect for a reference (`data[0]`), a widget name, or a point. With
+   * `space` (a group), widgets of that group are measured in the group's own
+   * space, so members lay out relative to each other wherever the group goes.
+   */
+  anchor(v: Value, space: string | null = null): Rect {
     if (isPoint(v)) return rect(v.$pt[0], v.$pt[1], 0, 0);
     if (!isRef(v)) throw new KinoError(`expected a widget reference or a point, got ${str(v)}`);
     const [name, ...path] = v.$ref;
     const w = this.inst(String(name));
-    const placed = this.place(w.name);
+    const inSpace = space !== null && this.groupOf(w.name) === space;
+    const placed = inSpace ? this.placeLocal(w.name) : this.place(w.name);
     if (!path.length) return placed.bbox;
     const def = this.registry.get(w.type)!;
     const r = def.anchor?.(w.props, path, this.rc(w.name));
     if (!r) throw new KinoError(`'${v.text}' does not point to a part of the ${w.type} '${w.name}'`);
-    return rect(r.x + placed.dx, r.y + placed.dy, r.w, r.h);
+    const local = rect(r.x + placed.dx, r.y + placed.dy, r.w, r.h);
+    return placed.xf ? mapRect(placed.xf, local) : local;
   }
 }
 
@@ -249,6 +332,13 @@ function panelNodes(p: Record<string, any>, inner: Rect, rc: RenderCtx) {
       attrs: { x: pad - 4, y: pad + capSize * 0.4, 'font-size': capSize, 'font-family': rc.theme.fontCaption || rc.theme.fontSans, 'font-weight': 800, 'letter-spacing': 1.6, fill: rc.color(p.panelColor, 'caption') },
     });
   return { nodes, sx: pad - inner.x, sy: pad + capH - inner.y };
+}
+
+/** Bounding box of a rect after an SVG transform. */
+function mapRect(xf: string, r: Rect): Rect {
+  const pts = [transformPoint(xf, r.x, r.y), transformPoint(xf, r.x + r.w, r.y), transformPoint(xf, r.x, r.y + r.h), transformPoint(xf, r.x + r.w, r.y + r.h)];
+  const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+  return rect(Math.min(...xs), Math.min(...ys), Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
 }
 
 function originOf(origin: string, bb: Rect) {

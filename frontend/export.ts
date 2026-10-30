@@ -1,5 +1,5 @@
 import { ArrayBufferTarget, Muxer } from 'mp4-muxer';
-import type { Movie } from '../src/index.ts';
+import { contactSheetSvg, sheetLayout, type Movie } from '../src/index.ts';
 import { buildPdf, type PdfPage } from '../src/pdf.ts';
 import { embeddedFontStyle } from './fonts.ts';
 import type { PlayerData } from './player/main.ts';
@@ -22,6 +22,30 @@ async function drawSvg(ctx: CanvasRenderingContext2D, svg: string) {
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+/**
+ * A contact sheet: every page as a labeled tile (see contactSheetSvg), as a PNG.
+ * `stale()` is checked between pages, so a newer compile can abandon it.
+ */
+export async function exportSheet(movie: Movie, stale: () => boolean = () => false): Promise<Blob | null> {
+  const layout = sheetLayout(movie);
+  const canvas = document.createElement('canvas');
+  canvas.width = layout.tileWidth;
+  canvas.height = Math.round((layout.tileWidth * movie.video.height) / movie.video.width);
+  const ctx = canvas.getContext('2d')!;
+  const fonts = await themeFonts(movie);
+  const tiles: string[] = [];
+  for (const p of layout.pages) {
+    if (stale()) return null;
+    await drawSvg(ctx, movie.pageSvg(p, fonts));
+    tiles.push(canvas.toDataURL('image/jpeg', 0.85));
+  }
+  const sheet = contactSheetSvg(movie, layout, tiles);
+  canvas.width = sheet.width;
+  canvas.height = sheet.height;
+  await drawSvg(ctx, sheet.svg);
+  return new Promise((ok) => canvas.toBlob(ok, 'image/png'));
 }
 
 /**

@@ -1,7 +1,7 @@
 import { KinoError, type Expr, type Item, type Pos, type Stmt } from '../dsl/ast.ts';
 import { parse } from '../dsl/parser.ts';
 import { WidgetRegistry } from '../widgets/index.ts';
-import { interpolate, still, type TransitionKind } from './animate.ts';
+import { DIRECTIONS, interpolate, IRIS_SHAPES, still, type Direction, type IrisShape, type TransitionKind, type TransitionStyle } from './animate.ts';
 import { easings, type Ease } from './easing.ts';
 import { padView, Renderer, type Frame, type Padding } from './render.ts';
 import { emptyState, SceneBuilder, type SceneState } from './scene.ts';
@@ -50,6 +50,7 @@ interface Segment {
   to: Frame;
   ease: Ease;
   kind: TransitionKind;
+  style?: TransitionStyle;
   hold: boolean;
 }
 
@@ -71,6 +72,8 @@ export interface Beat {
   frame: Frame;
   /** chapter (step) this beat belongs to */
   chapter: number;
+  /** line of the frame, step or `then` that starts it */
+  line: number;
 }
 
 /** A page of the printed version (PDF): the picture once a transition is done. */
@@ -85,6 +88,8 @@ export interface Page {
   elapsed: number;
   /** name of the step it belongs to */
   title: string;
+  /** line of the frame, step or `then` it shows */
+  line: number;
   /** ms on the timeline */
   time: number;
 }
@@ -138,7 +143,7 @@ export class Movie {
     const out: Page[] = [];
     let previous = '';
     this.beats.forEach((b, i) => {
-      const page: Page = { beat: i + 1, elapsed: 0, title: this.chapters[b.chapter]?.name ?? '', time: b.end };
+      const page: Page = { beat: i + 1, elapsed: 0, title: this.chapters[b.chapter]?.name ?? '', line: b.line, time: b.end };
       const svg = this.pageSvg(page);
       if (svg === previous && b.end > b.start) {
         // nothing stays changed: show the effect halfway instead of a repeat of the last page
@@ -148,7 +153,7 @@ export class Movie {
       previous = svg;
       out.push(page);
     });
-    return out.length ? out : [{ beat: 0, elapsed: 0, title: '', time: 0 }];
+    return out.length ? out : [{ beat: 0, elapsed: 0, title: '', line: 1, time: 0 }];
   }
 
   /** The picture of a page (see pages()). */
@@ -186,7 +191,7 @@ export class Movie {
     const s = segs[lo];
     if (s.hold) return still(s.to);
     const p = Math.min(1, Math.max(0, (t - s.start) / (s.end - s.start)));
-    return interpolate(s.from, s.to, s.ease(p), s.kind);
+    return interpolate(s.from, s.to, s.ease(p), s.kind, s.style);
   }
 
   /** `extraDefs` is inserted into <defs> verbatim (the browser exporter embeds fonts this way). */
@@ -287,12 +292,12 @@ export function compile(src: string, opts: CompileOptions = {}): Movie {
       builder.apply(next, g.filter((s) => s.t !== 'say'));
       const snapshot = structuredClone(next);
       const target = build(snapshot, item.pos);
-      beats.push({ start: t, end: t + Math.max(0, o.duration), frame: target, chapter: chapters.length - 1 });
+      beats.push({ start: t, end: t + Math.max(0, o.duration), frame: target, chapter: chapters.length - 1, line: groupLines[gi] });
       const d = Math.max(0, o.duration);
       step.transitions.push({ start: t, end: t + d, kind: o.kind, ease: o.easeName, line: groupLines[gi] });
       rec.group(g, t, d, snapshot.widgets);
       if (o.duration > 0) {
-        segments.push({ start: t, end: t + o.duration, from: current, to: target, ease: o.ease, kind: o.kind, hold: false });
+        segments.push({ start: t, end: t + o.duration, from: current, to: target, ease: o.ease, kind: o.kind, style: o.style, hold: false });
         t += o.duration;
       }
       current = target;
@@ -376,19 +381,22 @@ function padding(v: Value | undefined, width: number, height: number): Padding {
   return p;
 }
 
+const TRANSITIONS: TransitionKind[] = ['morph', 'fade', 'cut', 'wipe', 'iris', 'slide', 'push'];
+
 function stepOptions(opts: Expr[], video: VideoConfig, firstFrame: boolean) {
   let duration = firstFrame ? 0 : video.transition;
   let easeName = easings[video.easing] ? video.easing : 'ease-in-out';
   let kind: TransitionKind = 'morph';
   let hold = video.hold;
   let holdSet = false;
+  const style: TransitionStyle = {};
   for (const e of opts) {
     const v = evalWith(e, e.pos);
     const word = typeof v === 'string' || isRef(v) ? str(v) : null;
     if (e.t === 'dur' || typeof v === 'number') duration = num(v);
     else if (word && easings[word]) easeName = word;
-    else if (word === 'morph' || word === 'fade' || word === 'cut') {
-      kind = word;
+    else if (word && (TRANSITIONS as string[]).includes(word)) {
+      kind = word as TransitionKind;
       if (word === 'cut') duration = 0;
       else if (firstFrame && duration === 0) duration = video.transition;
     } else if (isObj(v)) {
@@ -399,11 +407,17 @@ function stepOptions(opts: Expr[], video: VideoConfig, firstFrame: boolean) {
         }
         else if (k === 'duration') duration = num(x);
         else if (k === 'ease' || k === 'easing') easeName = easings[str(x)] ? str(x) : fail(`unknown easing '${str(x)}'`, e.pos);
-        else fail(`unknown step option '${k}' (hold, duration, ease)`, e.pos);
+        else if (k === 'direction')
+          style.direction = (DIRECTIONS as string[]).includes(str(x)) ? (str(x) as Direction) : fail(`unknown direction '${str(x)}' (${DIRECTIONS.join(', ')})`, e.pos);
+        else if (k === 'shape')
+          style.shape = (IRIS_SHAPES as string[]).includes(str(x)) ? (str(x) as IrisShape) : fail(`unknown iris shape '${str(x)}' (${IRIS_SHAPES.join(', ')})`, e.pos);
+        else fail(`unknown step option '${k}' (hold, duration, ease, direction, shape)`, e.pos);
       }
-    } else fail(`unknown step option '${str(v)}'. Use a duration, an easing (${Object.keys(easings).join(', ')}), morph|fade|cut, or hold: <dur>`, e.pos);
+    } else fail(`unknown step option '${str(v)}'. Use a duration, an easing (${Object.keys(easings).join(', ')}), a transition (${TRANSITIONS.join('|')}), or hold: <dur>`, e.pos);
   }
-  return { duration, ease: easings[easeName], easeName, kind, hold, holdSet };
+  if (style.direction && kind !== 'wipe' && kind !== 'slide' && kind !== 'push') fail(`'direction' is for wipe, slide and push transitions`, opts[0]?.pos);
+  if (style.shape && kind !== 'iris') fail(`'shape' is for iris transitions`, opts[0]?.pos);
+  return { duration, ease: easings[easeName], easeName, kind, style, hold, holdSet };
 }
 
 function evalWith(e: Expr, pos: Pos): Value {

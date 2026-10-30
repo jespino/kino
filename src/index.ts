@@ -8,6 +8,7 @@ export { builtinWidgets } from './widgets/index.ts';
 export { themes, type Theme } from './core/theme.ts';
 export { easings } from './core/easing.ts';
 export { frameToSVG } from './core/svg.ts';
+export { contactSheetSvg, sheetLayout, type SheetLayout } from './core/sheet.ts';
 export * as values from './core/values.ts';
 export { extractEmojis, emojiFileNames, type EmojiProvider } from './core/emoji.ts';
 export { extractImages, imageAsset, imageMime, imageSize, type ImageAsset, type ImageProvider } from './core/image.ts';

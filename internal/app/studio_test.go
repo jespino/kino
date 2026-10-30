@@ -224,8 +224,23 @@ func TestWatchAndSave(t *testing.T) {
 	}
 	var st map[string]any
 	b, _ := os.ReadFile(filepath.Join(dir, ".kino", "status.json"))
-	if err := json.Unmarshal(b, &st); err != nil || st["file"] != "talk.kino" || st["ok"] != true || len(st["sha256"].(string)) != 64 {
+	if err := json.Unmarshal(b, &st); err != nil || st["file"] != "talk.kino" || st["ok"] != true || len(st["sha256"].(string)) != 64 || st["sheet"] != nil {
 		t.Fatalf("status: %s %v", b, err)
+	}
+	// a sheet of an older source is dropped; one of the reported source is written and noted
+	if err := a.ReportSheet("frame {}\n", []byte("old")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".kino", "sheet.png")); !os.IsNotExist(err) {
+		t.Fatalf("stale sheet written: %v", err)
+	}
+	if err := a.ReportSheet("frame { c: box }\n", []byte("png")); err != nil {
+		t.Fatal(err)
+	}
+	b, _ = os.ReadFile(filepath.Join(dir, ".kino", "status.json"))
+	png, _ := os.ReadFile(filepath.Join(dir, ".kino", "sheet.png"))
+	if err := json.Unmarshal(b, &st); err != nil || st["sheet"] != ".kino/sheet.png" || string(png) != "png" {
+		t.Fatalf("status after sheet: %s %v", b, err)
 	}
 }
 

@@ -2,7 +2,7 @@
 // plus a few targeted checks of DSL behaviour.
 import { readdirSync, readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
-import { collectNarration, compile, DEFAULT_TTS_MODEL, extractImages, imageAsset, imageSize, KinoError } from '../src/index.ts';
+import { collectNarration, compile, contactSheetSvg, DEFAULT_TTS_MODEL, extractImages, imageAsset, imageSize, KinoError, sheetLayout } from '../src/index.ts';
 import { gauge } from '../examples/widgets/gauge.ts';
 import { twemoji } from '../src/node/emoji.ts';
 import { Resvg } from '@resvg/resvg-js';
@@ -483,6 +483,64 @@ test('tree: BST delete moves the successor up; rotations; swaps', () => {
   assert.equal(top(base + 'step { t.swap(50, 30) }'), '30');
   // in-order layout: labels sorted by x read in sorted order
   assert.deepEqual(xs(base + 'step { t.insert(55) }').sort((a, b) => a[1] - b[1]).map((n) => n[0]), ['30', '50', '55', '60', '65', '70', '80']);
+});
+
+test('slide transitions: each picture is clipped to its part of the screen', () => {
+  const src = (opts: string) => `frame { a: box at (100, 100) { text: one } }\nframe "b" (${opts}) { b: box at (100, 100) { text: two } }`;
+  for (const opts of ['wipe, 1s', 'iris, 1s, shape: star', 'slide, 1s, direction: up', 'push, 1s']) {
+    const m = compile(src(opts));
+    const mid = m.svgAt(m.chapters[1].time + 500);
+    assert.equal((mid.match(/<clipPath id="kclip\d"/g) ?? []).length, 2, opts);
+    assert.equal((mid.match(/<g clip-path=/g) ?? []).length, (mid.match(/<\/g>/g) ?? []).length, opts);
+    assert.match(mid, />one</, opts);
+    assert.match(mid, />two</, opts);
+    // settled: no clipping left
+    assert.doesNotMatch(m.svgAt(m.duration), /clip-path/, opts);
+  }
+  // push moves the old picture out: halfway, `one` is shifted by half the width
+  const push = compile(src('push, 1s, linear')).svgAt(900 + 500);
+  assert.match(push, /<rect [^>]*transform="translate\(-640 0\)"/);
+  assert.throws(() => compile(src('wipe, shape: star')), /'shape' is for iris/);
+  assert.throws(() => compile(src('iris, shape: blob')), /unknown iris shape 'blob'/);
+  assert.throws(() => compile(src('fade, direction: up')), /'direction' is for wipe, slide and push/);
+});
+
+test('group: members move, scale and leave together; relative layout inside it', () => {
+  const pos = (svg: string, text: string) => {
+    const m = new RegExp(`<text [^>]*transform="([^"]*)"[^>]*>${text}</text>`).exec(svg);
+    return m ? m[1] : null;
+  };
+  const base = 'frame { g: group\n a: box at (100, 100) { text: A, group: g }\n b: box at right-of(a) { text: B, group: g }\n c: box at (800, 500) { text: C }\n a -> c }\n';
+  const m0 = compile(base);
+  // without `at` the group leaves members where they are
+  const anchor = (svg: string) => /translate\(([-\d.]+) ([-\d.]+)\) rotate\(0\) scale\(1\) translate\(([-\d.]+) ([-\d.]+)\)/.exec(svg)!;
+  const a0 = anchor(m0.svgAt(0));
+  assert.equal(+a0[1] + +a0[3], 0);
+  assert.equal(+a0[2] + +a0[4], 0);
+  assert.equal(pos(m0.svgAt(0), 'C'), null);
+  // moving the group moves its members, not others; the arrow follows
+  const m1 = compile(base + 'step { g.at = (400, 300) }');
+  const end = m1.svgAt(m1.duration);
+  assert.match(pos(end, 'A')!, /^translate\(/);
+  assert.equal(pos(end, 'A'), pos(end, 'B'));
+  const arrowStart = (svg: string) => /<path d="M([-\d.]+) ([-\d.]+)[^"]*"[^>]*stroke-width/.exec(svg)![1];
+  assert.notEqual(arrowStart(m0.svgAt(0)), arrowStart(end));
+  // groups and their members leave together, with arrows to them
+  const gone = compile(base + 'step { remove g }');
+  assert.doesNotMatch(gone.svgAt(gone.duration), />A<|>B</);
+  assert.match(gone.svgAt(gone.duration), />C</);
+  assert.throws(() => compile('frame { x: box\n a: box { group: x } }'), /'x' is a box, not a group/);
+  assert.throws(() => compile('frame { g: group { group: h }\n h: group { group: g }\n a: box { group: g } }'), /contains itself|circular/);
+});
+
+test('contact sheet: a labeled tile per page', () => {
+  const m = compile('frame "one" { a: box { text: x } }\nstep "two" { a.text = "y"\nthen\n a.text = "z" }');
+  const layout = sheetLayout(m, { columns: 2 });
+  assert.deepEqual(layout.pages.map((p) => [p.title, p.line]), [['one', 1], ['two', 2], ['two', 3]]);
+  const sheet = contactSheetSvg(m, layout, layout.pages.map(() => 'data:image/png;base64,'));
+  assert.equal((sheet.svg.match(/<image /g) ?? []).length, 3);
+  assert.match(sheet.svg, />line 3</);
+  assert.equal(sheet.width, 16 * 2 + 2 * 480 + 14);
 });
 
 console.log(failures ? `\n${failures} failing` : '\nall passed');

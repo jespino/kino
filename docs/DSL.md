@@ -55,8 +55,19 @@ Write the options in parentheses, in any order: `step "x" (1s, back-out, fade, h
 
 - **duration**: `500ms`, `1.2s`. A bare duration also works: `step 1s { ... }`.
 - **easing**: `linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out`, `back-out`, `back-in-out`, `spring`, `bounce`, `step`.
-- **kind**: `morph` (default: keyed interpolation), `fade` (crossfade the whole picture), `cut` (no animation).
+- **kind**: `morph` (default: keyed interpolation), `fade` (crossfade the whole picture), `cut` (no animation),
+  or a slide transition of the whole picture:
+  - `wipe`: a moving edge reveals the next picture. `direction:` where the edge goes (default `right`).
+  - `iris`: a growing shape from the center reveals it. `shape: circle` (default), `diamond`, `square` or `star`.
+  - `slide`: the next picture slides in over the current one. `direction:` where it moves (default `left`, so it comes in from the right).
+  - `push`: like `slide`, but it pushes the current picture out.
 - `hold: <dur>`: the pause after the step.
+
+```kino
+frame "Results" (wipe, 800ms) { ... }
+frame "Q&A" (iris, 1s, shape: star) { ... }
+frame "Part 2" (push, direction: up) { ... }
+```
 
 The first `frame` appears instantly unless it has options such as `(fade)` or `(600ms)`.
 
@@ -87,7 +98,7 @@ name.method(args...)                                 // call a widget method
 name[2].method(args...)                              // same as name.method(2, args...)
 a.part -> b[0] [{ props }]                           // arrow between anchors (-->: dashed)
 p: a.part -> b[0] [{ props }]                        // named arrow (so you can change it later)
-remove a, b                                          // delete widgets (they play their exit effect)
+remove a, b                                          // delete widgets (they play their exit effect); a group goes with its members, arrows with what they point at
 say "Some narration" [(speaker: Luna)]               // spoken while this (sub)step animates
 then                                                 // (steps only) start a new sub-step
 ```
@@ -145,6 +156,7 @@ the screen.
 | `opacity` | 0..1 (`w.hide()` / `w.show()` are shortcuts) |
 | `z` | stacking order (higher is on top; cursors default to 100) |
 | `enter`, `exit` | effect when parts appear/disappear: `fade`, `pop`, `draw`, `slide-up`, `slide-down`, `slide-left`, `slide-right`, `none` |
+| `group` | the [`group`](#group) the widget belongs to: it moves, scales, turns, fades and leaves with it |
 | `panel` | wrap the widget in a panel: `panel: "Register file · one M1 core"` (uppercase caption) or `panel: true` (no caption) |
 | `panelGlow` | `true` or a color: glowing panel border (animates on/off) |
 | `panelColor`, `panelPadding` | caption color (default `caption`), inner padding (22) |
@@ -429,6 +441,30 @@ Bit 0 is the least significant, drawn on the right.
 f: bits at (80, 430) { width: 32, format: float }
 step { f.setFloat(3.14); f.group(sign, 31, 31, pink); f.group(exponent, 30, 23, warn); f.group(mantissa, 22, 0) }
 n: bits { value: 22 }     step { n.shl(1) }       // 44
+```
+
+### `group`
+
+Widgets that move together. Members join with `group: name`; the group itself
+draws nothing (except its `panel`).
+
+- Members lay out as usual: `at` points are canvas coordinates, and relative
+  positions (`right-of(a)`) between members follow the group.
+- Without `at`, the group stays where its members are. With `at` (and
+  `origin`), the box around the members goes there: `g.at = (600, 200)` moves
+  them all.
+- `scale` (1) and `rotate` (degrees) apply around the group's center.
+- `opacity`, `hide()`/`show()`, emphasis actions (`g.pulse()`) and `panel:
+  "Caption"` apply to the whole group. `remove g` removes its members too.
+- Arrows can point at the group (`g`) or at members; they follow them.
+- Groups can contain groups.
+
+```kino
+cluster: group at (120, 160) { panel: "Cluster" }
+n1: box { text: "node 1", group: cluster }
+n2: box at right-of(n1) { text: "node 2", group: cluster }
+step { cluster.at = (500, 120); cluster.scale = 1.3 }
+step { cluster.rotate = -8; cluster.pulse() }
 ```
 
 ### `callout` (overlay)
