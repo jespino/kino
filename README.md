@@ -210,6 +210,12 @@ Kino Studio is the desktop app where you write, preview and present a deck:
 - **Agent** (right): a terminal running your coding agent (Claude Code, Codex,
   Gemini CLI, Antigravity) or a plain shell, in the project folder.
 
+In the Agent panel, **Start** opens a fresh conversation. **Resume** opens the
+saved-session picker for Claude Code (`claude --resume`) or Codex (`codex resume`),
+or continues Gemini CLI's latest session (`gemini --resume`). Stop a running agent
+first to resume a saved conversation. Sessions are stored by the agent CLI and
+can be resumed after reopening Kino and the same project folder.
+
 The studio reloads whenever the file changes on disk, so edits from your agent
 or your editor show up right away. If the file has an error, the last working
 version stays on screen and the error points at its line.

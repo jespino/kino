@@ -247,6 +247,15 @@ func (a *App) Harnesses() []terminal.Harness { return terminal.DefaultHarnesses(
 // StartTerminal runs a harness in the project folder, after writing the
 // context files agents read (AGENTS.md, the DSL reference, the skill).
 func (a *App) StartTerminal(harness string, cols, rows int) (string, error) {
+	return a.startTerminal(harness, cols, rows, false)
+}
+
+// ResumeTerminal runs a harness with its native session-resume option.
+func (a *App) ResumeTerminal(harness string, cols, rows int) (string, error) {
+	return a.startTerminal(harness, cols, rows, true)
+}
+
+func (a *App) startTerminal(harness string, cols, rows int, resume bool) (string, error) {
 	p, err := a.current()
 	if err != nil {
 		return "", err
@@ -261,6 +270,13 @@ func (a *App) StartTerminal(harness string, cols, rows int) (string, error) {
 	if h == nil {
 		return "", fmt.Errorf("unknown harness %q", harness)
 	}
+	if resume {
+		resumed, err := h.ForResume()
+		if err != nil {
+			return "", err
+		}
+		h = &resumed
+	}
 	if h.ID != "shell" {
 		if err := agentctx.Write(p.Dir, p.Path, a.docs); err != nil {
 			return "", fmt.Errorf("writing agent context: %w", err)
@@ -269,8 +285,8 @@ func (a *App) StartTerminal(harness string, cols, rows int) (string, error) {
 	return a.terms.Start(*h, p.Dir, []string{"KINO_PROJECT=" + p.Dir, "KINO_FILE=" + p.Path}, cols, rows)
 }
 
-func (a *App) TerminalWrite(id, data string) error          { return a.terms.Write(id, data) }
+func (a *App) TerminalWrite(id, data string) error            { return a.terms.Write(id, data) }
 func (a *App) TerminalResize(id string, cols, rows int) error { return a.terms.Resize(id, cols, rows) }
-func (a *App) TerminalBuffer(id string) (string, error)     { return a.terms.Buffer(id) }
-func (a *App) StopTerminal(id string) error                 { return a.terms.Stop(id) }
-func (a *App) Terminals() []terminal.Info                   { return a.terms.List() }
+func (a *App) TerminalBuffer(id string) (string, error)       { return a.terms.Buffer(id) }
+func (a *App) StopTerminal(id string) error                   { return a.terms.Stop(id) }
+func (a *App) Terminals() []terminal.Info                     { return a.terms.List() }

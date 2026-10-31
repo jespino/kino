@@ -42,6 +42,7 @@ export function TerminalPanel() {
   const [harness, setHarness] = useState(loadHarness);
   const [exitCode, setExitCode] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
 
   // Keystrokes are sent strictly in order, batched while a write is in flight.
   const queue = useRef('');
@@ -155,7 +156,9 @@ export function TerminalPanel() {
     };
   }, []);
 
-  const start = async (h = harness) => {
+  const start = async (h = harness, resume = false) => {
+    if (starting) return;
+    setStarting(true);
     const t = term.current!;
     setError(null);
     setExitCode(null);
@@ -169,10 +172,13 @@ export function TerminalPanel() {
     t.reset();
     try {
       fit.current!.fit();
-      attach(await api.startTerminal(h, t.cols, t.rows), h);
+      const launch = resume ? api.resumeTerminal : api.startTerminal;
+      attach(await launch(h, t.cols, t.rows), h);
       t.focus();
     } catch (e) {
       setError(errorText(e));
+    } finally {
+      setStarting(false);
     }
   };
 
@@ -188,7 +194,7 @@ export function TerminalPanel() {
     <div className="panel terminal">
       <div className="panel-header">
         <span className="panel-title">Agent</span>
-        <select value={harness} onChange={(e) => setHarness(e.target.value)} title="Agent harness">
+        <select value={harness} onChange={(e) => setHarness(e.target.value)} title="Agent harness" disabled={running || starting}>
           {harnesses.map((h) => (
             <option key={h.id} value={h.id} disabled={!h.available}>
               {h.name}
@@ -199,15 +205,26 @@ export function TerminalPanel() {
         <span className="spacer" />
         {running ? (
           <>
-            <button onClick={() => start()} title="Restart the agent">
+            <button onClick={() => start()} disabled={starting} title="Start a fresh agent session">
               Restart
             </button>
-            <button onClick={stop}>Stop</button>
+            <button onClick={stop} disabled={starting}>Stop</button>
           </>
         ) : (
-          <button className="primary" onClick={() => start()} disabled={current ? !current.available : true}>
-            Start
-          </button>
+          <>
+            {current?.resumeArgs?.length ? (
+              <button
+                onClick={() => start(harness, true)}
+                disabled={!current.available || starting}
+                title={harness === 'gemini' ? 'Resume the latest session for this project' : 'Choose a saved session for this project'}
+              >
+                Resume
+              </button>
+            ) : null}
+            <button className="primary" onClick={() => start()} disabled={!current?.available || starting}>
+              Start
+            </button>
+          </>
         )}
       </div>
       {error && <div className="error small">{error}</div>}
@@ -222,7 +239,7 @@ export function TerminalPanel() {
             </p>
             <div className="harness-grid">
               {harnesses.map((h) => (
-                <button key={h.id} disabled={!h.available} onClick={() => (setHarness(h.id), start(h.id))}>
+                <button key={h.id} disabled={!h.available || starting} onClick={() => (setHarness(h.id), start(h.id))}>
                   {h.name}
                 </button>
               ))}

@@ -100,6 +100,7 @@ export interface Harness {
   id: string;
   name: string;
   command: string;
+  resumeArgs?: string[];
   available: boolean;
 }
 
@@ -203,6 +204,7 @@ export const api = {
   reportSheet: (source: string, png: string) => call<void>('ReportSheet', source, png),
   harnesses: () => call<Harness[]>('Harnesses'),
   startTerminal: (harness: string, cols: number, rows: number) => call<string>('StartTerminal', harness, cols, rows),
+  resumeTerminal: (harness: string, cols: number, rows: number) => call<string>('ResumeTerminal', harness, cols, rows),
   terminalWrite: (id: string, data: string) => call<void>('TerminalWrite', id, data),
   terminalResize: (id: string, cols: number, rows: number) => call<void>('TerminalResize', id, cols, rows),
   terminalBuffer: (id: string) => call<string>('TerminalBuffer', id),
