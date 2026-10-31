@@ -5,7 +5,7 @@ go 1.26.8
 require (
 	github.com/aymanbagabas/go-pty v0.2.3
 	github.com/fsnotify/fsnotify v1.10.1
-	github.com/wailsapp/wails/v3 v3.0.0-beta.33
+	github.com/wailsapp/wails/v3 v3.0.0
 )
 
 require (
