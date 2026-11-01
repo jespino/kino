@@ -3,6 +3,7 @@ import type { ElementMark, Movie, TimelineElement } from '../../kino.ts';
 import { spokenText } from '../../kino.ts';
 import { play, seek } from '../engine.ts';
 import { useStore } from '../store.ts';
+import { revealLine } from '@jespino/agentstudio';
 
 const HEADER_W = 168;
 const RULER_H = 24;
@@ -521,7 +522,7 @@ export function Timeline() {
     lastClick.current = { key: hit.key, at: now };
     st.select({ key: hit.key, line: hit.line });
     if (double && hit.line) {
-      st.revealLine(hit.line);
+      revealLine(hit.line);
       return;
     }
     if (hit.time === null) scrub(x);

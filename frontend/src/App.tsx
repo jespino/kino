@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Group, Panel, Separator } from 'react-resizable-panels';
-import { onWorkspace, ProjectPicker, StudioLayout, TerminalPanel, Toaster } from '@jespino/agentstudio';
+import { onWorkspace, ProjectPicker, revealLine, SourceButton, StudioLayout, TerminalPanel, Toaster, toggleSource, useSourceOpen } from '@jespino/agentstudio';
 import { themes } from '../kino.ts';
 import { loadFonts } from '../fonts.ts';
 import { api, errorText, type Project } from './api.ts';
@@ -51,11 +51,6 @@ export function App() {
     const onKey = (ev: KeyboardEvent) => {
       const st = useStore.getState();
       if (!st.project || st.presenting) return;
-      if ((ev.ctrlKey || ev.metaKey) && ev.key === '2') {
-        ev.preventDefault();
-        st.toggleSource();
-        return;
-      }
       if ((ev.target as HTMLElement).closest('input, textarea, select, .cm-editor, .xterm') || ev.ctrlKey || ev.metaKey || ev.altKey) return;
       if (ev.key === ' ') {
         ev.preventDefault();
@@ -88,7 +83,6 @@ function Toolbar() {
   const hasMovie = useStore((s) => !!s.movie);
   const error = useStore((s) => s.error);
   const theme = useStore((s) => s.theme);
-  const showSource = useStore((s) => s.showSource);
   return (
     <header className="toolbar">
       <span className="brand">kino</span>
@@ -98,7 +92,7 @@ function Toolbar() {
       {project && (
         <>
           {error && (
-            <button className="small danger" onClick={() => (error.line ? useStore.getState().revealLine(error.line) : useStore.getState().toggleSource(true))} title={error.message}>
+            <button className="small danger" onClick={() => (error.line ? revealLine(error.line) : toggleSource(true))} title={error.message}>
               1 error{error.line ? ` · line ${error.line}` : ''}
             </button>
           )}
@@ -117,9 +111,7 @@ function Toolbar() {
               </option>
             ))}
           </select>
-          <button className={showSource ? 'on' : ''} onClick={() => useStore.getState().toggleSource()} title="Source panel (Ctrl+2)">
-            Source
-          </button>
+          <SourceButton />
           <span className="sep" />
           <span className="split">
             <button onClick={() => present('fullscreen')} disabled={!hasMovie} title="Fullscreen slides: each click or space plays one transition (f: switch to window, s: speaker view)">
@@ -197,7 +189,7 @@ function SettingsButton() {
 }
 
 function Editor() {
-  const showSource = useStore((s) => s.showSource);
+  const showSource = useSourceOpen();
   return (
     <StudioLayout
       mainMinSize={480}

@@ -15,7 +15,7 @@ require (
 	github.com/creack/pty v1.1.24 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
-	github.com/jespino/agentstudio v0.2.0
+	github.com/jespino/agentstudio v0.3.0
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/u-root/u-root v0.16.0 // indirect

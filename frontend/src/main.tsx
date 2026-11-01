@@ -12,6 +12,7 @@ import './styles.css';
 configureStudio({
   backend,
   id: 'kino',
+  sourceOpen: true,
   openTitle: 'Open a Kino project folder',
   openHint: 'Choose a project folder (one that holds a .kino script), or a script.',
   newHint: 'A project is a folder: it will contain the .kino script and an assets/ folder.',

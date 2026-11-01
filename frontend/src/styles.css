@@ -307,18 +307,6 @@ code {
 }
 
 /* Source */
-.source-error {
-  border: none;
-  border-radius: 0;
-  border-bottom: 1px solid var(--border);
-  background: color-mix(in srgb, var(--danger) 12%, var(--panel));
-  color: var(--danger);
-  text-align: left;
-  padding: 5px 10px;
-  font-family: ui-monospace, 'JetBrains Mono', monospace;
-  font-size: 12px;
-  white-space: pre-wrap;
-}
 
 /* Agent terminal */
 

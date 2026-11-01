@@ -59,11 +59,6 @@ interface State {
   setSpeed: (s: number) => void;
   presenting: 'fullscreen' | 'window' | null;
 
-  showSource: boolean;
-  toggleSource: (on?: boolean) => void;
-  /** asks the source panel to select a line (n makes repeated requests distinct) */
-  reveal: { line: number; n: number } | null;
-  revealLine: (line: number) => void;
 
   selection: TimelineSelection | null;
   select: (s: TimelineSelection | null) => void;
@@ -80,7 +75,6 @@ interface State {
 
 }
 
-let revealN = 0;
 
 export const useStore = create<State>((set, get) => ({
   project: null,
@@ -124,17 +118,6 @@ export const useStore = create<State>((set, get) => ({
   setSpeed: (speed) => set({ speed }),
   presenting: null,
 
-  showSource: prefs.get('showSource', '1') === '1',
-  toggleSource: (on) => {
-    const showSource = on ?? !get().showSource;
-    prefs.set('showSource', showSource ? '1' : '0');
-    set({ showSource });
-  },
-  reveal: null,
-  revealLine: (line) => {
-    get().toggleSource(true);
-    set({ reveal: { line, n: ++revealN } });
-  },
 
   selection: null,
   select: (selection) => set({ selection }),

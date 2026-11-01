@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { spokenText } from '../../kino.ts';
 import { jump, narration, play, resync, seek } from '../engine.ts';
 import { useStore } from '../store.ts';
-import { useAskAgent } from '@jespino/agentstudio';
+import { revealLine, useAskAgent } from '@jespino/agentstudio';
 
 const fmt = (ms: number) => {
   const s = ms / 1000;
@@ -100,7 +100,7 @@ function ErrorBanner({ hasMovie }: { hasMovie: boolean }) {
   const where = error.line ? ` at line ${error.line}:${error.col}` : '';
   return (
     <div className="preview-error" role="alert">
-      <button className="link" onClick={() => error.line && useStore.getState().revealLine(error.line)} title="Show in the source">
+      <button className="link" onClick={() => error.line && revealLine(error.line)} title="Show in the source">
         <strong>{error.line ? `Line ${error.line}: ` : ''}</strong>
         {error.message}
       </button>
