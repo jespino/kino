@@ -74,7 +74,7 @@ func readTemplate(path string) (*Template, error) {
 	}
 	script := path
 	if st.IsDir() {
-		if script, err = resolveProject(path); err != nil {
+		if script, err = resolveScript(path); err != nil {
 			return nil, err
 		}
 	}

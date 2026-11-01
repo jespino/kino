@@ -113,7 +113,7 @@ func TestSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Settings.TTS.Provider != "elevenlabs" || p.Settings.TTS.Voice["speaker"] != "Rachel" || len(p.Settings.TTS.Voice) != 1 {
+	if projectSettings(p).TTS.Provider != "elevenlabs" || projectSettings(p).TTS.Voice["speaker"] != "Rachel" || len(projectSettings(p).TTS.Voice) != 1 {
 		t.Fatalf("project settings: %+v", p.Settings)
 	}
 	b, _ := os.ReadFile(filepath.Join(dir, "kino.json"))
@@ -123,7 +123,7 @@ func TestSettings(t *testing.T) {
 	// edits on disk (an agent) reach the studio
 	os.WriteFile(filepath.Join(dir, "kino.json"), []byte(`{"tts": {"provider": "festival"}}`), 0o644)
 	deadline := time.Now().Add(3 * time.Second)
-	for a.CurrentProject().Settings.TTS.Provider != "festival" {
+	for projectSettings(a.CurrentProject()).TTS.Provider != "festival" {
 		if time.Now().After(deadline) {
 			t.Fatal("kino.json edit not picked up")
 		}

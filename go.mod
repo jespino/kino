@@ -2,10 +2,11 @@ module github.com/jespino/kino
 
 go 1.26.8
 
+require github.com/wailsapp/wails/v3 v3.0.0
+
 require (
-	github.com/aymanbagabas/go-pty v0.2.3
-	github.com/fsnotify/fsnotify v1.10.1
-	github.com/wailsapp/wails/v3 v3.0.0
+	github.com/aymanbagabas/go-pty v0.2.3 // indirect
+	github.com/fsnotify/fsnotify v1.10.1 // indirect
 )
 
 require (
@@ -14,6 +15,7 @@ require (
 	github.com/creack/pty v1.1.24 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
+	github.com/jespino/agentstudio v0.1.0
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/u-root/u-root v0.16.0 // indirect

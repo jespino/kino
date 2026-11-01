@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+import { studioProxy } from '@jespino/agentstudio/vite';
 import { build } from 'esbuild';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,11 +38,8 @@ export default defineConfig({
     port: Number(process.env.WAILS_VITE_PORT) || 5173,
     // the studio imports the engine, examples and fonts from the repository root
     fs: { allow: ['..'] },
-    proxy: {
-      '/rpc': backend,
-      '/__kino': backend,
-      '/events': { target: backend, changeOrigin: true },
-    },
+    // the API, with the session token `make dev` shares (AGENTSTUDIO_TOKEN)
+    proxy: studioProxy({ backend, routes: ['/__kino'] }),
   },
   // embedded into the desktop app by main.go
   build: { outDir: 'dist', emptyOutDir: true, chunkSizeWarningLimit: 2000 },

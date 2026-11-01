@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Movie } from '../kino.ts';
-import type { Project, SettingsView, Template } from './api.ts';
+import type { Project, SettingsView } from './api.ts';
 
 export interface CompileError {
   message: string;
@@ -77,10 +77,6 @@ interface State {
   /** the settings dialog, on one of its tabs */
   settingsOpen: 'project' | 'global' | null;
 
-  picker: 'open' | 'new' | null;
-  setPicker: (p: 'open' | 'new' | null) => void;
-  /** the template the next new project starts from */
-  template: Template | null;
 
   toast: { id: number; text: string } | null;
   showToast: (text: string) => void;
@@ -152,9 +148,6 @@ export const useStore = create<State>((set, get) => ({
   settings: null,
   settingsOpen: null,
 
-  picker: null,
-  setPicker: (picker) => set({ picker }),
-  template: null,
 
   toast: null,
   showToast: (text) => {

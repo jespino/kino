@@ -176,7 +176,7 @@ func TestTemplates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Source != "frame { deck: box }\n" || p.Path != filepath.Join(p.Dir, "fromdeck.kino") || p.Settings.TTS.Provider != "espeak" {
+	if p.Source != "frame { deck: box }\n" || p.Path != filepath.Join(p.Dir, "fromdeck.kino") || projectSettings(p).TTS.Provider != "espeak" {
 		t.Fatalf("project from a folder template: %+v", p)
 	}
 	if b, err := os.ReadFile(filepath.Join(p.Dir, "assets", "logo.png")); err != nil || string(b) != "png" {

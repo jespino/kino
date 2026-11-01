@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jespino/kino/internal/terminal"
+	"github.com/jespino/agentstudio/terminal"
 )
 
 func TestTerminalLaunchModes(t *testing.T) {

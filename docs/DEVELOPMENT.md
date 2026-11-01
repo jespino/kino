@@ -46,8 +46,7 @@ frontend/       Kino Studio UI (React + Vite): preview, timeline, source, agent 
                 present.ts (presenting and the speaker view, shared with the HTML player)
 main.go         Kino Studio (Wails 3): embeds frontend/dist; `kino serve` for browsers
 internal/app/   studio backend: projects, file watching, narration/image endpoints
-internal/terminal/  agent terminals (PTYs)    internal/agentctx/  context files for agents
-internal/server/    HTTP adapter for `kino serve`
+internal/agentctx/  context files for agents (written by agentstudio/agentctx)
 build/          Wails build config, icons and packaging (Linux, macOS, Windows)
 cli/            render.ts (video/PNG/SVG), smoke.ts (tests)
 src/node/       TTS clip cache for the CLI (internal/app/studio.go uses the same layout)
@@ -57,17 +56,23 @@ examples/       .kino examples + widgets/gauge.ts (a custom widget)
 
 ## Kino Studio internals
 
-The studio's backend is Go (`internal/app`): projects, the file watcher, the
-terminals, and the `/__kino/*` endpoints for narration audio, images and
-saving exports. The UI talks to it through the Wails runtime in the app, or
-over HTTP (`kino serve`) in a browser, which is also how the UI is tested. The
-TTS server is a separate process (`npm run tts`).
+The studio's backend is Go (`internal/app`): narration, status files, settings
+and the `/__kino/*` endpoints for narration audio, images and saving exports.
+What every agent studio shares comes from
+[agentstudio](https://github.com/jespino/agentstudio): the project and its file
+watcher, recent projects, the folder browser, the agent terminals, the desktop
+shell and the HTTP adapter, and on the UI side the agent panel, the project
+screens, the source editor and the layout. The UI talks to the backend through
+the Wails runtime in the app, or over HTTP (`kino serve`) in a browser, which is
+also how the UI is tested. `kino serve` only answers requests carrying its
+session token: open the address it prints (`make dev` shares the token with
+Vite). The TTS server is a separate process (`npm run tts`).
 
 The studio builds with [Wails 3](https://v3.wails.io). `make install` installs
 the pinned `wails3` tool if it's missing; to build by hand:
 
 ```sh
-go install -tags gtk3 github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.33
+go install -tags gtk3 github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
 make app               # wails3 task build -> bin/kino, without installing it
 bin/kino [project]     # run it from the repo
 make app-dev           # wails3 task dev: the app with hot reload through Vite

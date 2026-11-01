@@ -65,12 +65,13 @@ app-package: $(DEPS) ## Package the desktop app for this OS
 
 dev: $(DEPS) ## The studio in a browser: kino serve (Go backend) + Vite with hot reload
 	$(DIST_STUB)
-	@trap 'kill 0' EXIT; go run -tags $(GO_TAGS) . serve $(PROJECT) & npm run dev
+	@trap 'kill 0' EXIT; export AGENTSTUDIO_TOKEN=$$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n'); \
+	  go run -tags $(GO_TAGS) . serve $(PROJECT) & npm run dev
 
 build: $(DEPS) ## Build the studio UI into frontend/dist/
 	npm run build
 
-serve: build ## Serve the built studio at http://127.0.0.1:34116 (kino serve)
+serve: build ## Serve the built studio on http://127.0.0.1:34116 (open the address it prints: it carries the session token)
 	go run -tags $(GO_TAGS) . serve $(PROJECT)
 
 # ---- quality ----

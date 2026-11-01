@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Group, Panel, Separator } from 'react-resizable-panels';
+import { ProjectPicker, StudioLayout, TerminalPanel } from '@jespino/agentstudio';
 import { themes } from '../kino.ts';
 import { loadFonts } from '../fonts.ts';
 import { api, errorText, EVENT_PROJECT, EVENT_SOURCE, on, type Project } from './api.ts';
@@ -7,12 +8,10 @@ import { exportFrame, exportPage, exportSlides, exportVideo, jump, play, rebuild
 import { Preview } from './preview/Preview.tsx';
 import { openSpeakerView, present, Slides } from './preview/Slides.tsx';
 import { ProjectMenu } from './project/ProjectMenu.tsx';
-import { ProjectPicker } from './project/ProjectPicker.tsx';
 import { Welcome } from './project/Welcome.tsx';
 import { SettingsDialog } from './settings/SettingsDialog.tsx';
 import { SourcePanel } from './source/SourcePanel.tsx';
 import { useStore } from './store.ts';
-import { TerminalPanel } from './terminal/TerminalPanel.tsx';
 import { Timeline } from './timeline/Timeline.tsx';
 
 export function App() {
@@ -205,34 +204,44 @@ function SettingsButton() {
 function Editor() {
   const showSource = useStore((s) => s.showSource);
   return (
-    <Group orientation="horizontal" className="main">
-      <Panel id="left" minSize={480}>
-        <Group orientation="vertical">
-          <Panel id="top" defaultSize="60" minSize={200}>
-            <Group orientation="horizontal">
-              <Panel id="preview" minSize={300}>
-                <Preview />
-              </Panel>
-              {showSource && (
-                <>
-                  <Separator className="sep-v" />
-                  <Panel id="source" defaultSize="42" minSize={260}>
-                    <SourcePanel />
-                  </Panel>
-                </>
-              )}
-            </Group>
-          </Panel>
-          <Separator className="sep-h" />
-          <Panel id="bottom" minSize={120}>
-            <Timeline />
-          </Panel>
-        </Group>
-      </Panel>
-      <Separator className="sep-v" />
-      <Panel id="agent" defaultSize="32" minSize={320}>
-        <TerminalPanel />
-      </Panel>
-    </Group>
+    <StudioLayout
+      mainMinSize={480}
+      agentSize="32"
+      agent={
+        <TerminalPanel
+          intro={
+            <>
+              <p>Run an agent in this project's folder.</p>
+              <p className="muted small">
+                It gets AGENTS.md, the Kino DSL reference and skill, and a status file with compile errors. Its edits to the script show up in the preview as
+                soon as it saves.
+              </p>
+            </>
+          }
+        />
+      }
+    >
+      <Group orientation="vertical">
+        <Panel id="top" defaultSize="60" minSize={200}>
+          <Group orientation="horizontal">
+            <Panel id="preview" minSize={300}>
+              <Preview />
+            </Panel>
+            {showSource && (
+              <>
+                <Separator className="sep-v" />
+                <Panel id="source" defaultSize="42" minSize={260}>
+                  <SourcePanel />
+                </Panel>
+              </>
+            )}
+          </Group>
+        </Panel>
+        <Separator className="sep-h" />
+        <Panel id="bottom" minSize={120}>
+          <Timeline />
+        </Panel>
+      </Group>
+    </StudioLayout>
   );
 }

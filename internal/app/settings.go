@@ -13,7 +13,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 )
 
@@ -216,28 +215,7 @@ func (a *App) SaveProjectSettings(ps ProjectSettings) (*Project, error) {
 	if err := writeAtomic(file, append(b, '\n')); err != nil {
 		return nil, err
 	}
-	// set after writing: a watcher event for an older edit re-reads the file, which is now this
-	a.mu.Lock()
-	if a.project != nil && a.project.Path == p.Path {
-		a.project.Settings = ps
-	}
-	a.mu.Unlock()
-	return a.CurrentProject(), nil
-}
-
-// reloadProjectSettings picks up kino.json edits made outside the studio.
-func (a *App) reloadProjectSettings(dir string) {
-	ps := readProjectSettings(dir)
-	a.mu.Lock()
-	if a.project == nil || a.project.Dir != dir || reflect.DeepEqual(a.project.Settings, ps) {
-		a.mu.Unlock()
-		return
-	}
-	a.project.Settings = ps
-	p := *a.project
-	a.mu.Unlock()
-	if b, err := os.ReadFile(p.Path); err == nil {
-		p.Source = string(b)
-	}
-	a.send(EventProject, &p)
+	// Refresh re-reads the file, which is now this, and sends the project
+	// (the watcher's event for this edit finds nothing new).
+	return a.Refresh(), nil
 }

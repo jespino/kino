@@ -23,6 +23,7 @@ func TestWriteKeepsUserContent(t *testing.T) {
 	}
 	agents, _ := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
 	s := string(agents)
+	beginMarker, _ := Context("", docs).Markers()
 	if !strings.HasPrefix(s, "# My notes\n") || strings.Count(s, beginMarker) != 1 || !strings.Contains(s, "`talk.kino`") {
 		t.Fatalf("AGENTS.md:\n%s", s)
 	}
@@ -32,7 +33,7 @@ func TestWriteKeepsUserContent(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(dir, "GEMINI.md")); string(b) != "@AGENTS.md\n" {
 		t.Fatalf("GEMINI.md: %q", b)
 	}
-	for p, want := range map[string]string{".kino/docs/DSL.md": "# DSL\n", ".claude/skills/kino/SKILL.md": "# Skill\n"} {
+	for p, want := range map[string]string{".kino/docs/DSL.md": "# DSL\n", ".claude/skills/kino/SKILL.md": "# Skill\n", ".agents/skills/kino/SKILL.md": "# Skill\n"} {
 		if b, _ := os.ReadFile(filepath.Join(dir, p)); string(b) != want {
 			t.Fatalf("%s: %q", p, b)
 		}
