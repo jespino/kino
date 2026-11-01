@@ -78,11 +78,8 @@ interface State {
   settingsOpen: 'project' | 'global' | null;
 
 
-  toast: { id: number; text: string } | null;
-  showToast: (text: string) => void;
 }
 
-let toastId = 0;
 let revealN = 0;
 
 export const useStore = create<State>((set, get) => ({
@@ -149,10 +146,4 @@ export const useStore = create<State>((set, get) => ({
   settingsOpen: null,
 
 
-  toast: null,
-  showToast: (text) => {
-    const id = ++toastId;
-    set({ toast: { id, text } });
-    setTimeout(() => set((s) => (s.toast?.id === id ? { toast: null } : {})), 5000);
-  },
 }));

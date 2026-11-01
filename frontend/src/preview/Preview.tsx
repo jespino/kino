@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { spokenText } from '../../kino.ts';
 import { jump, narration, play, resync, seek } from '../engine.ts';
 import { useStore } from '../store.ts';
-import { askActiveAgent, getActiveAgent, subscribeToAgent } from '../terminal/bus.ts';
+import { useAskAgent } from '@jespino/agentstudio';
 
 const fmt = (ms: number) => {
   const s = ms / 1000;
@@ -95,14 +95,9 @@ export function Preview() {
 
 function ErrorBanner({ hasMovie }: { hasMovie: boolean }) {
   const error = useStore((s) => s.error)!;
-  const agent = useSyncExternalStore(subscribeToAgent, getActiveAgent);
-  const [sent, setSent] = useState(false);
-  useEffect(() => setSent(false), [error.message, error.line]);
+  const agent = useAskAgent(`${error.message}:${error.line}`);
   const file = useStore.getState().project?.path.split(/[\\/]/).pop();
-  const ask = async () => {
-    const where = error.line ? ` at line ${error.line}:${error.col}` : '';
-    if (await askActiveAgent(`Kino Studio can't compile ${file}${where}: ${error.message}\nPlease fix it.`)) setSent(true);
-  };
+  const where = error.line ? ` at line ${error.line}:${error.col}` : '';
   return (
     <div className="preview-error" role="alert">
       <button className="link" onClick={() => error.line && useStore.getState().revealLine(error.line)} title="Show in the source">
@@ -111,9 +106,9 @@ function ErrorBanner({ hasMovie }: { hasMovie: boolean }) {
       </button>
       <span className="spacer" />
       {hasMovie && <span className="muted small">showing the last version that compiled</span>}
-      {agent && (
-        <button className="small" onClick={ask} disabled={sent}>
-          {sent ? 'Sent to the agent' : 'Ask the agent to fix it'}
+      {agent.available && (
+        <button className="small" onClick={() => agent.ask(`Kino Studio can't compile ${file}${where}: ${error.message}\nPlease fix it.`)} disabled={agent.sent || agent.sending} title={agent.error}>
+          {agent.sent ? 'Sent to the agent' : 'Ask the agent to fix it'}
         </button>
       )}
     </div>

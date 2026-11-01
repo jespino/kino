@@ -1,6 +1,7 @@
 // Compiling, saving and playing the open script. React components read the
 // results from the store; everything here runs outside React.
 import { collectNarration, compile, extractEmojis, extractImages, KinoError, type ImageAsset, type Movie, type NarrationRequest, type ProjectVoice } from '../kino.ts';
+import { createSourceSaver, saveFile, toast } from '@jespino/agentstudio';
 import { exportHtml, exportMp4, exportPdf, exportSheet } from '../export.ts';
 import { customWidgets } from '../widgets.ts';
 import { Narration } from '../narration.ts';
@@ -89,7 +90,7 @@ async function reportSheet(source: string) {
   }
 }
 
-let saveTimer = 0;
+const saver = createSourceSaver();
 let rebuildTimer = 0;
 
 /** The editor changed the script: recompile soon, save to disk a bit later. */
@@ -97,15 +98,12 @@ export function editSource(text: string) {
   st().setSource(text);
   window.clearTimeout(rebuildTimer);
   rebuildTimer = window.setTimeout(rebuild, 200);
-  window.clearTimeout(saveTimer);
-  saveTimer = window.setTimeout(() => {
-    api.saveSource(text).catch((e) => st().showToast(`Could not save: ${errorText(e)}`));
-  }, 400);
+  saver.schedule(text);
 }
 
 /** The script was replaced from outside the editor (disk change, another project). */
 export function replaceSource(text: string) {
-  window.clearTimeout(saveTimer);
+  saver.cancel();
   st().setSource(text, true);
   rebuild();
 }
@@ -218,21 +216,6 @@ function selfContained(): Movie {
   return compile(source, { theme: theme || undefined, voice: projectVoice(), widgets: customWidgets, narration: narration.lookup, emoji: studioEmoji, images: inlineImages });
 }
 
-/** Save through a native dialog in the desktop app (its webview ignores <a download>), else as a browser download. */
-async function saveFile(blob: Blob, name: string): Promise<boolean> {
-  if (isWails || (await api.hasNativeDialogs().catch(() => false))) {
-    const res = await fetch(`/__kino/save?name=${encodeURIComponent(name)}`, { method: 'POST', body: blob });
-    const out = await res.json();
-    if (!res.ok) throw new Error(out.error ?? `HTTP ${res.status}`);
-    return out.saved;
-  }
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-  return true;
-}
 
 const baseName = () => (st().project?.path.split(/[\\/]/).pop() ?? 'kino').replace(/\.kino$/, '');
 
@@ -242,7 +225,7 @@ export async function exportFrame() {
   try {
     await saveFile(new Blob([selfContained().svgAt(time)], { type: 'image/svg+xml' }), `${baseName()}-${(time / 1000).toFixed(1)}s.svg`);
   } catch (e) {
-    st().showToast(`Could not save the frame: ${errorText(e)}`);
+    toast(`Could not save the frame: ${errorText(e)}`);
   }
 }
 
@@ -255,10 +238,10 @@ export async function exportSlides() {
     const blob = await exportPdf(selfContained(), baseName(), (done, total) => st().setProgress(done < total ? `Rendering page ${done + 1}/${total}…` : 'Saving…'), scale);
     const saved = await saveFile(blob, `${baseName()}.pdf`);
     st().setProgress(null);
-    if (saved) st().showToast('PDF exported.');
+    if (saved) toast('PDF exported.');
   } catch (e) {
     st().setProgress(null);
-    st().showToast(`PDF export failed: ${errorText(e)}`);
+    toast(`PDF export failed: ${errorText(e)}`);
   }
 }
 
@@ -275,10 +258,10 @@ export async function exportVideo() {
     st().setProgress('Saving…');
     const saved = await saveFile(blob, `${baseName()}.mp4`);
     st().setProgress(null);
-    if (saved) st().showToast(withVoice || !movie.narration.length ? 'Video exported.' : 'Video exported without narration (TTS unavailable).');
+    if (saved) toast(withVoice || !movie.narration.length ? 'Video exported.' : 'Video exported without narration (TTS unavailable).');
   } catch (e) {
     st().setProgress(null);
-    st().showToast(`Export failed: ${errorText(e)}`);
+    toast(`Export failed: ${errorText(e)}`);
   }
 }
 
@@ -304,9 +287,9 @@ export async function exportPage() {
     const blob = await exportHtml(selfContained(), { title: st().project?.name || baseName(), source, theme: theme || undefined, voice: projectVoice(), narration: durations, emoji, images });
     const saved = await saveFile(blob, `${baseName()}.html`);
     st().setProgress(null);
-    if (saved) st().showToast('HTML exported.');
+    if (saved) toast('HTML exported.');
   } catch (e) {
     st().setProgress(null);
-    st().showToast(`HTML export failed: ${errorText(e)}`);
+    toast(`HTML export failed: ${errorText(e)}`);
   }
 }

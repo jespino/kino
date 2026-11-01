@@ -12,7 +12,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-WAILS_VERSION=v3.0.0-beta.33
+WAILS_VERSION=v3.0.0
 PREFIX="${PREFIX:-$HOME/.local}"
 BIN="$PREFIX/bin/kino"
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}"
@@ -22,7 +22,10 @@ MAC_APP="$HOME/Applications/kino.app"
 OS="$(uname -s)"
 
 say() { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
-fail() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+fail() {
+  printf '\033[1;31merror:\033[0m %s\n' "$*" >&2
+  exit 1
+}
 
 uninstall() {
   if [ "$OS" = Darwin ]; then
@@ -37,14 +40,17 @@ uninstall() {
 
 MODE="${1:-install}"
 case "$MODE" in
-  build | install) ;;
-  uninstall) uninstall; exit 0 ;;
-  *) fail "usage: scripts/studio.sh build|install|uninstall" ;;
+build | install) ;;
+uninstall)
+  uninstall
+  exit 0
+  ;;
+*) fail "usage: scripts/studio.sh build|install|uninstall" ;;
 esac
 
 case "$OS" in
-  Linux | Darwin) ;;
-  *) fail "Kino Studio builds on Linux and macOS. On Windows, run 'make app-package' to build an installer." ;;
+Linux | Darwin) ;;
+*) fail "Kino Studio builds on Linux and macOS. On Windows, run 'make app-package' to build an installer." ;;
 esac
 
 # ---- prerequisites: explain what is missing and how to get it ----
@@ -133,6 +139,6 @@ EOF
 fi
 
 case ":$PATH:" in
-  *":$PREFIX/bin:"*) say "Start it from the menu, or run: kino [project folder]" ;;
-  *) echo "note: $PREFIX/bin is not in your PATH; add it to run 'kino' from a terminal." ;;
+*":$PREFIX/bin:"*) say "Start it from the menu, or run: kino [project folder]" ;;
+*) echo "note: $PREFIX/bin is not in your PATH; add it to run 'kino' from a terminal." ;;
 esac

@@ -1,5 +1,5 @@
 // Syntax highlighting for the Kino DSL (a StreamLanguage: tokens only, no grammar).
-import { HighlightStyle, StreamLanguage, syntaxHighlighting } from '@codemirror/language';
+import { StreamLanguage } from '@codemirror/language';
 import { tags as t } from '@lezer/highlight';
 
 const KEYWORDS = /^(video|frame|step|then|wait|say|note|voice|remove|at)\b/;
@@ -51,18 +51,3 @@ export const kinoLanguage = StreamLanguage.define<{ inRaw: boolean; declType: bo
   tokenTable: { definition: t.definition(t.variableName), function: t.function(t.variableName) },
   languageData: { commentTokens: { line: '//' } },
 });
-
-export const kinoHighlight = syntaxHighlighting(
-  HighlightStyle.define([
-    { tag: t.keyword, color: 'var(--syn-keyword)', fontWeight: '600' },
-    { tag: t.comment, color: 'var(--syn-comment)', fontStyle: 'italic' },
-    { tag: t.string, color: 'var(--syn-string)' },
-    { tag: t.number, color: 'var(--syn-number)' },
-    { tag: t.atom, color: 'var(--syn-atom)' },
-    { tag: t.propertyName, color: 'var(--syn-property)' },
-    { tag: t.definition(t.variableName), color: 'var(--syn-definition)', fontWeight: '600' },
-    { tag: t.typeName, color: 'var(--syn-type)' },
-    { tag: t.function(t.variableName), color: 'var(--syn-function)' },
-    { tag: t.operator, color: 'var(--syn-keyword)' },
-  ]),
-);

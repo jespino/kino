@@ -77,124 +77,22 @@
   }
 }
 
-* {
-  box-sizing: border-box;
-}
-
-html,
-body,
-#root {
-  height: 100%;
-  margin: 0;
-}
-
-body {
-  background: var(--bg);
-  color: var(--text);
-  font: 13px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
-  overflow: hidden;
-}
-
-button,
-select {
-  font: inherit;
-  color: var(--text);
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 3px 10px;
-  cursor: pointer;
-}
-button:hover:not(:disabled) {
-  border-color: var(--accent);
-}
-button:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
 button.primary,
 button.on {
   background: var(--accent);
   color: var(--accent-text);
   border-color: var(--accent);
 }
-button.danger {
-  color: var(--danger);
-  border-color: var(--danger);
-}
-button.small {
-  padding: 1px 7px;
-  font-size: 12px;
-}
-button.big {
-  padding: 8px 18px;
-  font-size: 14px;
-}
-button.link {
-  background: none;
-  border: none;
-  padding: 2px 4px;
-  text-align: left;
-}
-button.link:hover:not(:disabled) {
-  text-decoration: underline;
-}
 code {
   font-family: ui-monospace, 'JetBrains Mono', monospace;
   font-size: 0.95em;
 }
 
-.small {
-  font-size: 12px;
-}
-.muted {
-  color: var(--text-muted);
-}
-.spacer {
-  flex: 1;
-}
-.ellipsis {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-.error {
-  color: var(--danger);
-  padding: 4px 10px;
-}
-.danger-text {
-  color: var(--danger);
-}
-
-.app {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
 /* Toolbar */
-.toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
-}
 .toolbar .brand {
   font-weight: 800;
   letter-spacing: 0.02em;
   color: var(--accent);
-}
-.toolbar .sep,
-.panel-header .sep {
-  width: 1px;
-  height: 18px;
-  background: var(--border);
-}
-.banner {
-  border-bottom: 1px solid var(--border);
 }
 /* Present | Window: one control with two halves */
 .split {
@@ -212,29 +110,6 @@ code {
 }
 
 /* Layout */
-.main {
-  flex: 1;
-  min-height: 0;
-}
-.panel {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  background: var(--panel);
-  min-width: 0;
-  min-height: 0;
-}
-.panel-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border-bottom: 1px solid var(--border);
-  min-height: 34px;
-}
-.panel-title {
-  font-weight: 600;
-}
 
 /* Preview */
 .preview-stage {
@@ -432,39 +307,6 @@ code {
 }
 
 /* Source */
-.source-editor {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-.source-editor .cm-editor {
-  height: 100%;
-  background: var(--panel);
-  color: var(--text);
-  font-size: 13px;
-}
-.source-editor .cm-scroller {
-  font-family: ui-monospace, 'JetBrains Mono', 'Fira Code', monospace;
-}
-.source-editor .cm-gutters {
-  background: var(--panel-2);
-  border-right: 1px solid var(--border);
-  color: var(--text-muted);
-}
-.source-editor .cm-activeLine,
-.source-editor .cm-activeLineGutter {
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-}
-.source-editor .cm-cursor {
-  border-left-color: var(--text);
-}
-.source-editor .cm-selectionBackground,
-.source-editor .cm-focused .cm-selectionBackground {
-  background: color-mix(in srgb, var(--accent) 30%, transparent) !important;
-}
-.source-editor .cm-error-line {
-  background: color-mix(in srgb, var(--danger) 18%, transparent);
-}
 .source-error {
   border: none;
   border-radius: 0;

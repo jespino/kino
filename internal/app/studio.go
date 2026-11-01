@@ -9,7 +9,8 @@ package app
 //	GET  /__kino/tts-health                       -> TTS server status
 //	POST /__kino/tts-test {voice, text}           -> audio/wav of a sample line (not cached)
 //	GET  /__kino/image?src=<path or url>          -> image bytes (paths stay inside the project)
-//	POST /__kino/save?name=<file>                 -> native save dialog, then writes the body
+//
+// Exports are saved through agentstudio's /__studio/save.
 
 import (
 	"encoding/binary"
@@ -141,8 +142,6 @@ func (a *App) serve(w http.ResponseWriter, r *http.Request) error {
 		http.ServeFile(w, r, file)
 	case path == "/__kino/image":
 		return serveImage(w, p.Dir, r.URL.Query().Get("src"))
-	case path == "/__kino/save" && r.Method == http.MethodPost:
-		return a.save(w, r, p.Dir)
 	default:
 		sendJSON(w, http.StatusNotFound, map[string]string{"error": "unknown endpoint"})
 	}
@@ -179,37 +178,6 @@ func serveImage(w http.ResponseWriter, dir, src string) error {
 	}
 	_, err = w.Write(data)
 	return err
-}
-
-// save asks where to put an exported file (frame SVG, MP4) and writes the request body there.
-// WebKitGTK and WKWebView ignore <a download>, so the desktop studio posts the blob here.
-func (a *App) save(w http.ResponseWriter, r *http.Request, dir string) error {
-	d := a.nativeDialogs()
-	if d == nil {
-		sendJSON(w, http.StatusNotImplemented, map[string]string{"error": "no native dialogs in this shell"})
-		return nil
-	}
-	file, err := d.SaveFile("Save", dir, filepath.Base(r.URL.Query().Get("name")))
-	if err != nil {
-		return err
-	}
-	if file == "" {
-		sendJSON(w, http.StatusOK, map[string]any{"saved": false})
-		return nil
-	}
-	out, err := os.Create(file)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(out, r.Body); err != nil {
-		out.Close()
-		return err
-	}
-	if err := out.Close(); err != nil {
-		return err
-	}
-	sendJSON(w, http.StatusOK, map[string]any{"saved": true, "path": file})
-	return nil
 }
 
 // cachedClip returns a clip that is already in the cache.

@@ -19,7 +19,6 @@ configureStudio({
   notOpenable: 'This folder has no .kino script',
   create,
   currentDir: () => useStore.getState().project?.dir,
-  notify: (message) => useStore.getState().showToast(message),
 });
 
 // the speaker view is the same page in its own window (#speaker)

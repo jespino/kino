@@ -2,17 +2,17 @@ import { useMemo } from 'react';
 import { EditorState, type Extension } from '@codemirror/state';
 import { highlightActiveLine, keymap, lineNumbers } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
-import { SourceEditor } from '@jespino/agentstudio';
+import { SourceEditor, studioHighlight } from '@jespino/agentstudio';
 import { editSource } from '../engine.ts';
 import { useStore } from '../store.ts';
-import { kinoHighlight, kinoLanguage } from './kinoLanguage.ts';
+import { kinoLanguage } from './kinoLanguage.ts';
 
 const extensions: Extension[] = [
   lineNumbers(),
   highlightActiveLine(),
   history(),
   kinoLanguage,
-  kinoHighlight,
+  studioHighlight,
   EditorState.tabSize.of(2),
   keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
 ];

@@ -22,4 +22,3 @@ func resolveScript(path string) (string, error) {
 	return studio.New(studio.Config{Ext: ".kino", Default: "project.kino"}).Resolve(path)
 }
 
-func (a *App) nativeDialogs() Dialogs { return a.Dialogs() }

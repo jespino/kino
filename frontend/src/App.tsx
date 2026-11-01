@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Group, Panel, Separator } from 'react-resizable-panels';
-import { ProjectPicker, StudioLayout, TerminalPanel } from '@jespino/agentstudio';
+import { onWorkspace, ProjectPicker, StudioLayout, TerminalPanel, Toaster } from '@jespino/agentstudio';
 import { themes } from '../kino.ts';
 import { loadFonts } from '../fonts.ts';
-import { api, errorText, EVENT_PROJECT, EVENT_SOURCE, on, type Project } from './api.ts';
+import { api, errorText, type Project } from './api.ts';
 import { exportFrame, exportPage, exportSlides, exportVideo, jump, play, rebuild, replaceSource } from './engine.ts';
 import { Preview } from './preview/Preview.tsx';
 import { openSpeakerView, present, Slides } from './preview/Slides.tsx';
@@ -17,19 +17,19 @@ import { Timeline } from './timeline/Timeline.tsx';
 export function App() {
   const project = useStore((s) => s.project);
   const loaded = useStore((s) => s.loaded);
-  const toast = useStore((s) => s.toast);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const st = useStore.getState;
     // also sent when kino.json changes (the narration voice): recompile either way
-    const offProject = on<Project | null>(EVENT_PROJECT, (p) => {
-      st().setProject(p);
-      if (p) rebuild();
-    });
-    // the script changed on disk (the agent, another editor)
-    const offSource = on<{ path: string; source: string }>(EVENT_SOURCE, (ch) => {
-      if (ch.path === st().project?.path && ch.source !== st().source) replaceSource(ch.source);
+    const offWorkspace = onWorkspace<Project>({
+      onProject: (p) => {
+        st().setProject(p);
+        if (p) rebuild();
+      },
+      // the script changed on disk (the agent, another editor)
+      onSource: replaceSource,
+      current: () => ({ path: st().project?.path, source: st().source }),
     });
     // the global settings pick the default narration provider: load them before compiling
     Promise.all([api.currentProject(), api.settings().catch(() => null)]).then(
@@ -43,8 +43,7 @@ export function App() {
     // redraw once the bundled fonts are in (the first frames may use fallbacks)
     loadFonts().then(() => useStore.setState((s) => ({ movie: s.movie })), (e) => console.warn('could not load fonts', e));
     return () => {
-      offProject();
-      offSource();
+      offWorkspace();
     };
   }, []);
 
@@ -73,11 +72,7 @@ export function App() {
     <div className="app">
       <Toolbar />
       {error && <div className="banner error">{error}</div>}
-      {toast && (
-        <div className="toast" key={toast.id} onClick={() => useStore.setState({ toast: null })}>
-          {toast.text}
-        </div>
-      )}
+      <Toaster />
       <ProjectPicker />
       <SettingsDialog />
       {loaded && !project && !error && <Welcome />}

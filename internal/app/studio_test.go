@@ -298,8 +298,11 @@ func TestImageStaysInsideProject(t *testing.T) {
 	if w := get(a, "GET", "/__kino/image?src=../secret.txt", ""); w.Code != 404 {
 		t.Fatalf("escaped the project: %d %q", w.Code, w.Body.String())
 	}
-	// without native dialogs, saving is left to the browser
-	if w := get(a, "POST", "/__kino/save?name=a.svg", "<svg/>"); w.Code != http.StatusNotImplemented {
+	// exports are saved through agentstudio's endpoint; without native
+	// dialogs, saving is left to the browser
+	w := httptest.NewRecorder()
+	a.StudioHTTP().ServeHTTP(w, httptest.NewRequest("POST", "/__studio/save?name=a.svg", strings.NewReader("<svg/>")))
+	if w.Code != http.StatusNotImplemented {
 		t.Fatalf("save: %d", w.Code)
 	}
 }
