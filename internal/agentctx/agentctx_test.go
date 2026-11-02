@@ -30,8 +30,8 @@ func TestWriteKeepsUserContent(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md")); string(b) != "mine\n" {
 		t.Fatalf("CLAUDE.md overwritten: %q", b)
 	}
-	if b, _ := os.ReadFile(filepath.Join(dir, "GEMINI.md")); string(b) != "@AGENTS.md\n" {
-		t.Fatalf("GEMINI.md: %q", b)
+	if _, err := os.Stat(filepath.Join(dir, "GEMINI.md")); !os.IsNotExist(err) {
+		t.Fatal("GEMINI.md was written")
 	}
 	for p, want := range map[string]string{".kino/docs/DSL.md": "# DSL\n", ".claude/skills/kino/SKILL.md": "# Skill\n", ".agents/skills/kino/SKILL.md": "# Skill\n"} {
 		if b, _ := os.ReadFile(filepath.Join(dir, p)); string(b) != want {

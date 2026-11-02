@@ -22,7 +22,7 @@ func TestTerminalLaunchModes(t *testing.T) {
 		{"claude", false, ""},
 		{"claude", true, "--resume"},
 		{"codex", true, "resume"},
-		{"gemini", true, "--resume"},
+		{"opencode", true, "--continue"},
 	} {
 		t.Run(tc.harness+"/"+tc.args, func(t *testing.T) {
 			a, ev, dir := newTestApp(t)

@@ -21,7 +21,7 @@ registers, algorithms, architecture diagrams.
 - **Made for technical content.** Code blocks, arrays, structs, tables, trees,
   memory, bits, registers and arrows are built in.
 - **Your AI agent can write it.** Kino Studio has a terminal for Claude Code,
-  Codex or Gemini CLI, and they already know the language.
+  Codex or OpenCode, and they already know the language.
 - **One file, many outputs.** Present live, export an HTML presentation or a
   PDF, or render a video with an AI voice.
 
@@ -208,11 +208,11 @@ Kino Studio is the desktop app where you write, preview and present a deck:
   tracks. Click to jump there; double-click to open that line in the source;
   Ctrl+wheel to zoom.
 - **Agent** (right): a terminal running your coding agent (Claude Code, Codex,
-  Gemini CLI, Antigravity) or a plain shell, in the project folder.
+  OpenCode, Antigravity) or a plain shell, in the project folder.
 
 In the Agent panel, **Start** opens a fresh conversation. **Resume** opens the
 saved-session picker for Claude Code (`claude --resume`) or Codex (`codex resume`),
-or continues Gemini CLI's latest session (`gemini --resume`). Stop a running agent
+or continues OpenCode's latest session (`opencode --continue`). Stop a running agent
 first to resume a saved conversation. Sessions are stored by the agent CLI and
 can be resumed after reopening Kino and the same project folder.
 

@@ -1,5 +1,5 @@
 // Package agentctx writes the context files that coding-agent harnesses
-// (Claude Code, Codex, Gemini CLI, …) read when they start in a project
+// (Claude Code, Codex, OpenCode, …) read when they start in a project
 // folder, so any agent launched from the studio's terminal knows the Kino DSL
 // and how to check its work. The writing is agentstudio's agentctx.
 package agentctx
@@ -38,9 +38,9 @@ func Context(file string, docs Docs) shared.Context {
 // Write creates or refreshes the context files in dir:
 //
 //	AGENTS.md                     managed block (user content outside it is kept)
-//	CLAUDE.md, GEMINI.md          "@AGENTS.md" import, only if missing
+//	CLAUDE.md                     "@AGENTS.md" import, only if missing
 //	.kino/docs/DSL.md             generated
-//	.agents/skills/kino/SKILL.md  generated (Codex, Gemini CLI, Antigravity)
+//	.agents/skills/kino/SKILL.md  generated (Codex, OpenCode, Antigravity)
 //	.claude/skills/kino/SKILL.md  generated (Claude Code)
 func Write(dir, file string, docs Docs) error {
 	return shared.Write(dir, Context(file, docs))

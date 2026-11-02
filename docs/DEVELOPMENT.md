@@ -86,7 +86,7 @@ GTK4 / WebKitGTK 6.0 instead, install `libgtk-4-dev libwebkitgtk-6.0-dev` and
 build with `wails3 task build EXTRA_TAGS=` (and `GO_TAGS=` for `make dev`).
 
 When an agent starts, the studio writes the context it needs into the project:
-`AGENTS.md` (plus `CLAUDE.md`/`GEMINI.md` pointing to it), the DSL reference in
+`AGENTS.md` (plus `CLAUDE.md` pointing to it), the DSL reference in
 `.kino/docs/DSL.md` and the skill in `.claude/skills/kino/`. After every compile
 it writes `.kino/status.json` (errors with `line:col`, the step timeline) and,
 while an agent terminal runs, `.kino/sheet.png` (every page in one picture,
