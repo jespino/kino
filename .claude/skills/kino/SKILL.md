@@ -85,7 +85,8 @@ voice { speaker: Victoria }              // change the default voice from here o
 - `step` (alias `transition`) = modify the current scene.
 - Step options, in any order: a duration (`600ms`, `1.2s`); an easing (`linear`,
   `ease`, `ease-in`, `ease-out`, `ease-in-out`, `back-out`, `back-in-out`,
-  `spring`, `bounce`); a kind (`morph` (default), `fade`, `cut`, or a slide
+  `spring`, `bounce`, `sine-in`, `sine-out`, `sine-in-out`, or
+  `cubic-bezier(x1, y1, x2, y2)`); a kind (`morph` (default), `fade`, `cut`, or a slide
   transition: `wipe`, `iris`, `slide`, `push`, with `direction: left|right|up|down`
   or `shape: circle|diamond|square|star` for iris; `zoom-in`/`zoom-out` with
   `target: widget` to fly into a widget of the current slide, or back out into
@@ -150,6 +151,8 @@ zoom: details that appear when you zoom in).
 in the speaker view, never on the slide. Write them for live talks.
 
 **Emphasis methods on every widget** play during their step: `bounce() jump() shake() pulse() spin() wiggle() tada()`.
+
+**Custom effects and actions** (top level, keyframes like CSS `@keyframes`): `effect rise { 0% { opacity: 0, y: 40, ease: cubic-bezier(0.2, 0.8, 0.2, 1) } 100% { opacity: 1, y: 0 } }` makes `enter: rise` / `exit: rise` (0% = hidden, 100% = at rest; exits play backwards); `action nod { 0% { rotate: 0 } 50% { rotate: 15 } 100% { rotate: 0 } }` gives every widget `w.nod()` (start and end at rest). Properties: `opacity`, `x`, `y`, `scale`, `scaleX`, `scaleY`, `rotate` (degrees, around the center), and `ease` for the segment leaving that keyframe (default linear). Redefining a built-in (`pop`, `fade`, `slide-*`, `bounce`...) changes it for the whole script.
 
 | Widget | Key props | Methods / assignment | Anchors |
 |---|---|---|---|

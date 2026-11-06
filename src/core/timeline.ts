@@ -72,6 +72,9 @@ export class TimelineRecorder {
   private open = new Map<string, { el: TimelineElement; span: ElementSpan }>();
   private byName = new Map<string, TimelineElement[]>();
 
+  /** `actions`: emphasis method names, marked as effects */
+  constructor(private actions: string[] = EMPHASIS) {}
+
   step(kind: TimelineStep['kind'], name: string, start: number, pos: Pos): TimelineStep {
     const s: TimelineStep = { kind, name, start, end: start, line: pos.line, transitions: [] };
     this.timeline.steps.push(s);
@@ -106,7 +109,7 @@ export class TimelineRecorder {
           mark(rootName(s.target), 'set', `${segText(s.target)} { ${s.props.map(([k]) => k).join(', ')} }`, s.pos);
           break;
         case 'call':
-          mark(rootName(s.target), EMPHASIS.includes(s.method) ? 'effect' : 'method', `${s.method}()`, s.pos);
+          mark(rootName(s.target), this.actions.includes(s.method) ? 'effect' : 'method', `${s.method}()`, s.pos);
           break;
       }
     }

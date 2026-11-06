@@ -48,7 +48,9 @@ export type Item =
   // narration over a still picture
   | { t: 'say'; text: string; opts: Expr[]; pos: Pos }
   // change the default voice from here on
-  | { t: 'voice'; props: [string, Expr][]; pos: Pos };
+  | { t: 'voice'; props: [string, Expr][]; pos: Pos }
+  // keyframed enter/exit effect or emphasis action: effect pop { 0% { opacity: 0 } 100% { ... } }
+  | { t: 'effect'; kind: 'effect' | 'action'; name: string; keys: { at: number; props: [string, Expr][]; pos: Pos }[]; pos: Pos };
 
 export interface Program {
   items: Item[];

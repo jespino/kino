@@ -1,4 +1,5 @@
-import { easings } from './easing.ts';
+import { easing, easings } from './easing.ts';
+import { applyKeyframes, BUILTIN_EFFECTS, lookup, type Effects, type KeyframeEffect } from './effects.ts';
 import { lerpColor } from './color.ts';
 import { center, lerpPath, pathLength, pointAlong, rect, transformPoint } from './geometry.ts';
 import type { Frame } from './render.ts';
@@ -34,7 +35,7 @@ export function still(f: Frame): Frame {
  * matched nodes tween their attributes, new ones play their enter effect,
  * vanished ones play their exit effect.
  */
-export function interpolate(A: Frame, B: Frame, p: number, kind: TransitionKind, style: TransitionStyle = {}, elapsed?: number): Frame {
+export function interpolate(A: Frame, B: Frame, p: number, kind: TransitionKind, style: TransitionStyle = {}, elapsed?: number, fx: Effects = BUILTIN_EFFECTS): Frame {
   if (kind === 'wipe' || kind === 'iris' || kind === 'slide' || kind === 'push') return reveal(A, B, p, kind, style);
   // Prezi-like: fly into a part of the slide, which opens up into the next one (and back out)
   if (kind === 'zoom-in') return zoom(A, B, p, style.target ? A.boxes?.[style.target] : undefined, B.view);
@@ -44,8 +45,8 @@ export function interpolate(A: Frame, B: Frame, p: number, kind: TransitionKind,
   if (kind === 'cut') return p < 1 ? { view: A.view, nodes: aNodes } : still(B);
   if (kind === 'fade') {
     const out: RNode[] = [];
-    for (const a of aNodes) push(out, effect(a, 'fade', 1 - p));
-    for (const b of B.nodes) if (!b.transient) push(out, effect(b, 'fade', p));
+    for (const a of aNodes) push(out, effect(a, 'fade', 1 - p, fx));
+    for (const b of B.nodes) if (!b.transient) push(out, effect(b, 'fade', p, fx));
     return { view, nodes: out };
   }
 
@@ -65,7 +66,7 @@ export function interpolate(A: Frame, B: Frame, p: number, kind: TransitionKind,
 
   const out: RNode[] = [];
   const flushExits = (k: string) => {
-    for (const a of exitAfter.get(k) ?? []) push(out, effect(a, a.exit ?? 'fade', 1 - p));
+    for (const a of exitAfter.get(k) ?? []) push(out, effect(a, a.exit ?? 'fade', 1 - p, fx));
   };
   flushExits('');
   for (const b of B.nodes) {
@@ -73,21 +74,21 @@ export function interpolate(A: Frame, B: Frame, p: number, kind: TransitionKind,
     if (b.transient) {
       // only on the step that creates it
       if (!aTransient.has(b.key) && (b.timing ? (elapsed ?? p * b.timing.duration) < b.timing.duration : p < 1)) {
-        if (b.timing) out.push(...timed(b, b.origin ? aMap.get(b.origin) : undefined, elapsed ?? p * b.timing.duration));
-        else if (b.leave === undefined) push(out, effect(b, b.enter ?? 'fade', p));
-        else out.push(...staged(b, b.origin ? aMap.get(b.origin) : undefined, p));
+        if (b.timing) out.push(...timed(b, b.origin ? aMap.get(b.origin) : undefined, elapsed ?? p * b.timing.duration, fx));
+        else if (b.leave === undefined) push(out, effect(b, b.enter ?? 'fade', p, fx));
+        else out.push(...staged(b, b.origin ? aMap.get(b.origin) : undefined, p, fx));
       }
       continue;
     }
     if (a) {
-      tween(out, a, b, p);
+      tween(out, a, b, p, fx);
       flushExits(b.key);
       continue;
     }
     const src = b.origin ? aMap.get(b.origin) : undefined;
-    if (b.timing) out.push(...timed(b, src, elapsed ?? p * b.timing.duration));
-    else if (src && src.tag === b.tag) tween(out, { ...src, key: b.key }, b, p);
-    else push(out, effect(b, b.enter ?? 'fade', b.delay ? Math.max(0, Math.min(1, (p - b.delay) / (1 - b.delay))) : p));
+    if (b.timing) out.push(...timed(b, src, elapsed ?? p * b.timing.duration, fx));
+    else if (src && src.tag === b.tag) tween(out, { ...src, key: b.key }, b, p, fx);
+    else push(out, effect(b, b.enter ?? 'fade', b.delay ? Math.max(0, Math.min(1, (p - b.delay) / (1 - b.delay))) : p, fx));
   }
   return { view, nodes: out };
 }
@@ -203,26 +204,26 @@ function shift(n: RNode, dx: number, dy: number, s: number): RNode {
 }
 
 /** Enter and optionally leave on a local millisecond clock, independent of step easing. */
-function timed(b: RNode, src: RNode | undefined, elapsed: number): RNode[] {
+function timed(b: RNode, src: RNode | undefined, elapsed: number, fx: Effects): RNode[] {
   const t = b.timing!;
   const progress = (start: number, end: number) => end <= start ? (elapsed >= end ? 1 : 0) : Math.max(0, Math.min(1, (elapsed - start) / (end - start)));
-  const q = (easings[t.easing] ?? easings.linear)(progress(t.start, t.end));
+  const q = (easing(t.easing) ?? easings.linear)(progress(t.start, t.end));
   const out: RNode[] = [];
-  if (src && src.tag === b.tag) tween(out, { ...src, key: b.key, text: b.text }, b, q);
-  else push(out, effect(b, b.enter ?? 'fade', q));
+  if (src && src.tag === b.tag) tween(out, { ...src, key: b.key, text: b.text }, b, q, fx);
+  else push(out, effect(b, b.enter ?? 'fade', q, fx));
   if (t.leave === undefined) return out;
-  const k = 1 - (easings[t.exitEasing ?? 'linear'] ?? easings.linear)(progress(t.leave, t.gone ?? t.duration));
+  const k = 1 - (easing(t.exitEasing ?? 'linear') ?? easings.linear)(progress(t.leave, t.gone ?? t.duration));
   return out.map((n) => ({ ...n, attrs: { ...n.attrs, opacity: Number(n.attrs.opacity ?? 1) * k } }));
 }
 
 /** Legacy fraction-based transient phases, driven by the enclosing transition. */
-function staged(b: RNode, src: RNode | undefined, p: number): RNode[] {
+function staged(b: RNode, src: RNode | undefined, p: number, fx: Effects): RNode[] {
   const out: RNode[] = [];
   const leave = b.leave ?? 1;
-  if (src && src.tag === b.tag) tween(out, { ...src, key: b.key, text: b.text }, b, Math.min(1, p / (b.arrive ?? 1)));
+  if (src && src.tag === b.tag) tween(out, { ...src, key: b.key, text: b.text }, b, Math.min(1, p / (b.arrive ?? 1)), fx);
   else {
     const d = b.delay ?? 0;
-    push(out, effect(b, b.enter ?? 'fade', Math.max(0, Math.min(1, (p - d) / Math.max(0.01, leave - d)))));
+    push(out, effect(b, b.enter ?? 'fade', Math.max(0, Math.min(1, (p - d) / Math.max(0.01, leave - d))), fx));
   }
   if (p <= leave) return out;
   const k = Math.max(0, 1 - (p - leave) / Math.max(0.01, (1 - leave) * 0.6));
@@ -233,10 +234,10 @@ function push(out: RNode[], n: RNode | null) {
   if (n) out.push(n);
 }
 
-function tween(out: RNode[], a: RNode, b: RNode, p: number) {
+function tween(out: RNode[], a: RNode, b: RNode, p: number, fx: Effects) {
   if (a.tag !== b.tag) {
-    push(out, effect(a, 'fade', 1 - p));
-    push(out, effect(b, 'fade', p));
+    push(out, effect(a, 'fade', 1 - p, fx));
+    push(out, effect(b, 'fade', p, fx));
     return;
   }
   const attrs: Record<string, string | number> = {};
@@ -254,41 +255,22 @@ function tween(out: RNode[], a: RNode, b: RNode, p: number) {
     return;
   }
   const node = { ...b, attrs };
-  out.push(b.action && b.action.id !== a.action?.id ? emphasize(node, b.action, p) : node);
+  out.push(b.action && b.action.id !== a.action?.id ? emphasize(node, b.action, p, fx) : node);
 }
 
-/** Keynote-style "action" animations, played over the transition (start and end at rest). */
-function emphasize(n: RNode, act: NonNullable<RNode['action']>, p: number): RNode {
-  const { cx, cy } = act;
-  const s = Math.sin(p * Math.PI);
-  let t = '';
-  switch (act.name) {
-    case 'bounce':
-      t = `translate(0 ${-Math.abs(Math.sin(p * Math.PI * 2)) * 40 * (1 - p * 0.5)})`;
-      break;
-    case 'jump':
-      t = `translate(0 ${-s * 70})`;
-      break;
-    case 'shake':
-      t = `translate(${Math.sin(p * Math.PI * 8) * 16 * (1 - p)} 0)`;
-      break;
-    case 'pulse':
-      t = `translate(${cx} ${cy}) scale(${1 + s * 0.25}) translate(${-cx} ${-cy})`;
-      break;
-    case 'spin':
-      t = `rotate(${p * 360} ${cx} ${cy})`;
-      break;
-    case 'wiggle':
-      t = `rotate(${Math.sin(p * Math.PI * 6) * 14 * (1 - p)} ${cx} ${cy})`;
-      break;
-    case 'tada': {
-      const sc = 1 + s * 0.18;
-      t = `translate(${cx} ${cy}) scale(${sc}) rotate(${Math.sin(p * Math.PI * 8) * 8 * s}) translate(${-cx} ${-cy})`;
-      break;
-    }
-  }
-  if (!t) return n;
-  return { ...n, attrs: { ...n.attrs, transform: n.attrs.transform ? `${t} ${n.attrs.transform}` : t } };
+/** Keynote-style "action" animations (keyframed, see effects.ts), played over the transition around the widget's center. */
+function emphasize(n: RNode, act: NonNullable<RNode['action']>, p: number, fx: Effects): RNode {
+  const kf = lookup(fx.actions, act.name);
+  if (!kf) return n;
+  return withKeyframes(n, kf, p, act.cx, act.cy);
+}
+
+function withKeyframes(n: RNode, kf: KeyframeEffect, q: number, cx: number, cy: number): RNode {
+  const { opacity, transform } = applyKeyframes(kf, q, cx, cy);
+  const attrs = { ...n.attrs };
+  if (opacity !== 1) attrs.opacity = Number(n.attrs.opacity ?? 1) * opacity;
+  if (transform) attrs.transform = attrs.transform ? `${transform} ${attrs.transform}` : transform;
+  return { ...n, attrs };
 }
 
 function mix(k: string, a: string | number | undefined, b: string | number | undefined, p: number): string | number {
@@ -309,9 +291,22 @@ function mix(k: string, a: string | number | undefined, b: string | number | und
   return p < 0.5 ? a : b;
 }
 
+/** Effects drawn in code (the rest are keyframes, see effects.ts). */
+const CODED = new Set(['none', 'draw', 'grow', 'pour', 'burst', 'float']);
+
 /** Apply an enter/exit effect; q is visibility from 0 (gone) to 1 (fully shown). */
-export function effect(n: RNode, name: string, q: number): RNode | null {
-  if (q >= 1 && name !== 'ripple' && name !== 'flash' && name !== 'burst' && name !== 'float' && name !== 'pour' && name !== 'swell') return n;
+export function effect(n: RNode, name: string, q: number, fx: Effects = BUILTIN_EFFECTS): RNode | null {
+  if (!CODED.has(name)) {
+    // keyframed (built-in or the script's own); unknown names fade
+    const kf = lookup(fx.effects, name) ?? lookup(fx.effects, 'fade') ?? BUILTIN_EFFECTS.effects.fade;
+    if (q >= 1 && kf.restAtEnd) return n;
+    // scale and rotate around the node's center, in the parent's coordinates (the node may carry its own transform)
+    const c = kf.pivots ? center(nodeBox(n)) : { x: 0, y: 0 };
+    const pv = kf.pivots ? transformPoint(n.attrs.transform as string | undefined, c.x, c.y) : c;
+    const out = withKeyframes(n, kf, q, pv.x, pv.y);
+    return Number(out.attrs.opacity ?? 1) <= 0.001 ? null : out;
+  }
+  if (q >= 1 && name !== 'burst' && name !== 'float' && name !== 'pour') return n;
   const op = Number(n.attrs.opacity ?? 1);
   const attrs = { ...n.attrs };
   // pivot in the parent's coordinates (the node may carry its own transform)
@@ -319,35 +314,9 @@ export function effect(n: RNode, name: string, q: number): RNode | null {
     const c = center(nodeBox(n));
     return transformPoint(n.attrs.transform as string | undefined, c.x, c.y);
   };
-  const scaleAbout = (s: number) => {
-    const c = pivot();
-    const t = `translate(${c.x} ${c.y}) scale(${s}) translate(${-c.x} ${-c.y})`;
-    attrs.transform = attrs.transform ? `${t} ${attrs.transform}` : t;
-  };
-  const slide = (dx: number, dy: number) => {
-    const t = `translate(${dx * (1 - q)} ${dy * (1 - q)})`;
-    attrs.transform = attrs.transform ? `${t} ${attrs.transform}` : t;
-    attrs.opacity = op * q;
-  };
   switch (name) {
     case 'none':
       return q >= 0.5 ? n : null;
-    case 'pop':
-      attrs.opacity = op * Math.min(1, q * 1.5);
-      scaleAbout(0.3 + 0.7 * q + Math.sin(q * Math.PI) * 0.12);
-      break;
-    case 'slide-up':
-      slide(0, 26);
-      break;
-    case 'slide-down':
-      slide(0, -26);
-      break;
-    case 'slide-left':
-      slide(26, 0);
-      break;
-    case 'slide-right':
-      slide(-26, 0);
-      break;
     case 'pour': {
       // a particle rides `track` into a target: it shrinks as it goes and fades on arrival
       if (!n.track) {
@@ -390,18 +359,6 @@ export function effect(n: RNode, name: string, q: number): RNode | null {
         attrs.height = hgt * q;
         attrs.opacity = op * Math.min(1, q * 3);
       } else attrs.opacity = op * q;
-      break;
-    case 'swell':
-      // a ring that grows out of its shape's outline and fades
-      attrs.opacity = op * (1 - q);
-      scaleAbout(1 + q * 0.35);
-      break;
-    case 'ripple':
-      attrs.opacity = op * (1 - q);
-      scaleAbout(0.2 + q * 1.3);
-      break;
-    case 'flash':
-      attrs.opacity = op * Math.sin(q * Math.PI);
       break;
     case 'burst':
     case 'float': {

@@ -54,7 +54,7 @@ class Parser {
 
   private item(): Item {
     const t = this.peek();
-    if (t.type !== 'ident') this.fail(`expected 'video', 'frame', 'step', 'say', 'voice' or 'wait' but found ${describe(t)}`);
+    if (t.type !== 'ident') this.fail(`expected 'video', 'frame', 'step', 'say', 'voice', 'wait', 'effect' or 'action' but found ${describe(t)}`);
     switch (t.value) {
       case 'video':
         this.next();
@@ -79,9 +79,31 @@ class Parser {
         if (d.type !== 'dur') this.fail(`'wait' needs a duration like 500ms or 1s`, d.pos);
         return { t: 'wait', ms: d.num!, pos: t.pos };
       }
+      case 'effect':
+      case 'action': {
+        this.next();
+        const name = this.ident();
+        return { t: 'effect', kind: t.value, name, keys: this.keyframes(), pos: t.pos };
+      }
       default:
-        this.fail(`unknown top-level keyword '${t.value}' (expected video, frame, step, say, voice or wait)`);
+        this.fail(`unknown top-level keyword '${t.value}' (expected video, frame, step, say, voice, wait, effect or action)`);
     }
+  }
+
+  // `{ 0% { opacity: 0, scale: 0.3 } 100% { opacity: 1, scale: 1 } }`
+  private keyframes(): { at: number; props: [string, Expr][]; pos: Pos }[] {
+    this.expect('{');
+    const keys: { at: number; props: [string, Expr][]; pos: Pos }[] = [];
+    this.skipSeps();
+    while (!this.is('}')) {
+      const k = this.peek();
+      if (k.type !== 'pct') this.fail(`expected a keyframe like 0% { ... } but found ${describe(k)}`);
+      this.next();
+      keys.push({ at: k.num!, props: this.propBlock(), pos: k.pos });
+      this.skipSeps();
+    }
+    this.expect('}');
+    return keys;
   }
 
   // `(600ms, ease-out, hold: 1s)` or a bare duration: `step 1s { ... }`

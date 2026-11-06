@@ -147,6 +147,13 @@ Widget API (see [`src/core/widget.ts`](../src/core/widget.ts)):
 | `overlay: true` | drawn in global coordinates from references (like `arrow`); ignores `at` |
 | `placed(props, rc, self)` | extra nodes in global coordinates once the widget is placed (`self.bbox`, `self.dx/dy`), e.g. particles flying in from other widgets (`merge` ribbons and pulses) |
 
+Effects and emphasis actions are keyframe tables (`src/core/effects.ts`): the
+built-ins are written in Kino's own `effect`/`action` syntax (`BUILTIN_SOURCE`),
+and scripts add to or override them. `effect()` and `emphasize()` in
+`animate.ts` sample the tracks; only `none`, `draw`, `grow` and the particle
+effects (`pour`, `burst`, `float`) are still drawn in code, because they use
+per-node data (paths, travel vectors) or change geometry.
+
 Node extras: `enter`/`exit` effects, `origin` (start from another node's
 state), `transient` (only visible while appearing, used for click ripples),
 `delay` (0..1 fraction of the transition to wait before entering, for
@@ -163,7 +170,8 @@ nearest tools each cover only part of it:
 | [Motion Canvas](https://motioncanvas.io/), [Remotion](https://www.remotion.dev/) | TypeScript/React code → video | deterministic **time → frame** rendering, so the preview and the export match exactly |
 | [D2](https://d2lang.com/), [Mermaid](https://mermaid.js.org/) | text → static diagrams | the declaration syntax: `name: type { ... }` and `a -> b` connections |
 | Keynote Magic Move, [reveal.js auto-animate](https://revealjs.com/auto-animate/), [Shiki Magic Move](https://github.com/shikijs/shiki-magic-move) | animate between two slides by matching elements | **the core animation model**: keyed morphing between states |
-| CSS transitions | | durations (`600ms`), easing names (`ease-in-out`) |
+| CSS transitions and `@keyframes` | | durations (`600ms`), easing names (`ease-in-out`), `cubic-bezier()`, the `0% { ... } 100% { ... }` keyframe syntax |
+| [Lottie](https://lottiefiles.github.io/lottie-docs/) | JSON export of After Effects animations | effects as **keyframed transform tracks** (opacity, position, scale, rotation around an anchor), one track per property, eased per segment |
 
 Manim and Motion Canvas are programming libraries: you write code that drives
 the animation. Kino is declarative. You describe **states** and the engine works

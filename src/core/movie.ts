@@ -2,12 +2,13 @@ import { KinoError, type Expr, type Item, type Pos, type Stmt } from '../dsl/ast
 import { parse } from '../dsl/parser.ts';
 import { WidgetRegistry } from '../widgets/index.ts';
 import { DIRECTIONS, interpolate, IRIS_SHAPES, still, type Direction, type IrisShape, type TransitionKind, type TransitionStyle } from './animate.ts';
-import { easings, type Ease } from './easing.ts';
+import { easing, easings, type Ease } from './easing.ts';
+import { BUILTIN_EFFECTS, defineEffects, type Effects } from './effects.ts';
 import { padView, Renderer, type Frame, type Padding } from './render.ts';
 import { emptyState, SceneBuilder, type SceneState } from './scene.ts';
 import { frameToSVG } from './svg.ts';
 import { DEFAULT_THEME, themes, type Theme } from './theme.ts';
-import { evaluate, isObj, isPoint, isRef, num, str, type Value } from './values.ts';
+import { evaluate, isCall, isObj, isPoint, isRef, num, str, type Value } from './values.ts';
 import type { WidgetDef } from './widget.ts';
 import type { EmojiProvider } from './emoji.ts';
 import type { ImageProvider } from './image.ts';
@@ -126,6 +127,8 @@ export class Movie {
     public readonly beats: Beat[] = [],
     /** steps, transitions and element lifespans, for editor timelines */
     public readonly timeline: Timeline = { steps: [], elements: [], camera: [] },
+    /** keyframed effects and actions: the built-ins plus the script's own */
+    public readonly effects: Effects = BUILTIN_EFFECTS,
   ) {}
 
   /**
@@ -152,7 +155,7 @@ export class Movie {
   jumpSvgAt(from: number, to: number, elapsed: number, extraDefs = ''): string {
     const j = this.jumpTransition(from, to);
     let frame = this.slideFrameAt(to);
-    if (j && elapsed < j.duration) frame = interpolate(this.slideFrameAt(from), frame, (easings[j.ease] ?? easings['ease-in-out'])(Math.max(0, elapsed) / j.duration), j.kind, j.style);
+    if (j && elapsed < j.duration) frame = interpolate(this.slideFrameAt(from), frame, (easing(j.ease) ?? easings['ease-in-out'])(Math.max(0, elapsed) / j.duration), j.kind, j.style, undefined, this.effects);
     return frameToSVG(frame, this.video.width, this.video.height, this.video.background, this.video.theme, extraDefs);
   }
 
@@ -232,7 +235,7 @@ export class Movie {
     const s = segs[lo];
     if (s.hold) return still(s.to);
     const p = Math.min(1, Math.max(0, (t - s.start) / (s.end - s.start)));
-    return interpolate(s.from, s.to, s.ease(p), s.kind, s.style, Math.max(0, t - s.start));
+    return interpolate(s.from, s.to, s.ease(p), s.kind, s.style, Math.max(0, t - s.start), this.effects);
   }
 
   /** `extraDefs` is inserted into <defs> verbatim (the browser exporter embeds fonts this way). */
@@ -247,7 +250,9 @@ export function compile(src: string, opts: CompileOptions = {}): Movie {
   opts.widgets?.forEach((w) => registry.register(w));
 
   const video = videoConfig(program.items.filter((i): i is Extract<Item, { t: 'video' }> => i.t === 'video'), opts.theme);
-  const builder = new SceneBuilder(registry);
+  const effects = defineEffects(program.items.filter((i): i is Extract<Item, { t: 'effect' }> => i.t === 'effect'));
+  const actions = Object.keys(effects.actions);
+  const builder = new SceneBuilder(registry, actions);
   const renderer = new Renderer(registry, video, video.theme, opts.emoji, opts.images);
   const build = (s: SceneState, pos: Pos) => {
     try {
@@ -271,7 +276,7 @@ export function compile(src: string, opts: CompileOptions = {}): Movie {
   let t = 0;
   let stepNo = 0;
   let voice = videoVoice(program, opts.voice);
-  const rec = new TimelineRecorder();
+  const rec = new TimelineRecorder(actions);
   const narration: NarrationClip[] = [];
   /** place a clip at the current time; returns its end time */
   const say = (s: { text: string; opts: Expr[]; pos: Pos }): number => {
@@ -294,7 +299,7 @@ export function compile(src: string, opts: CompileOptions = {}): Movie {
   };
 
   for (const item of program.items) {
-    if (item.t === 'video') continue;
+    if (item.t === 'video' || item.t === 'effect') continue;
     if (item.t === 'wait') {
       const step = rec.step('wait', `wait ${item.ms}ms`, t, item.pos);
       hold(item.ms);
@@ -384,7 +389,7 @@ export function compile(src: string, opts: CompileOptions = {}): Movie {
     if (!/^(https?:|mailto:)/.test(l) && !chapters.some((c) => c.name === l))
       fail(`link "${l}" doesn't match any frame or step name (${chapters.map((c) => `"${c.name}"`).join(', ')}) or URL`, pos);
   for (const [name, pos] of zoomTargets) if (!widgetNames.has(name)) fail(`zoom target '${name}' isn't a widget on any slide`, pos);
-  return new Movie(video, segments, chapters, t, narration, beats, rec.finish(t));
+  return new Movie(video, segments, chapters, t, narration, beats, rec.finish(t), effects);
 }
 
 function videoConfig(items: Extract<Item, { t: 'video' }>[], themeOverride?: string): VideoConfig {
@@ -457,7 +462,7 @@ const TRANSITIONS: TransitionKind[] = ['morph', 'fade', 'cut', 'wipe', 'iris', '
 
 function stepOptions(opts: Expr[], video: VideoConfig, firstFrame: boolean) {
   let duration = firstFrame ? 0 : video.transition;
-  let easeName = easings[video.easing] ? video.easing : 'ease-in-out';
+  let easeName = easing(video.easing) ? video.easing : 'ease-in-out';
   let kind: TransitionKind = 'morph';
   let hold = video.hold;
   let holdSet = false;
@@ -466,7 +471,8 @@ function stepOptions(opts: Expr[], video: VideoConfig, firstFrame: boolean) {
     const v = evalWith(e, e.pos);
     const word = typeof v === 'string' || isRef(v) ? str(v) : null;
     if (e.t === 'dur' || typeof v === 'number') duration = num(v);
-    else if (word && easings[word]) easeName = word;
+    else if (word && easing(word)) easeName = word;
+    else if (isCall(v) && v.$call === 'cubic-bezier') easeName = easing(str(v)) ? str(v) : fail(`bad easing '${str(v)}': cubic-bezier takes 4 numbers, x1 and x2 within 0..1`, e.pos);
     else if (word && (TRANSITIONS as string[]).includes(word)) {
       kind = word as TransitionKind;
       if (word === 'cut') duration = 0;
@@ -478,7 +484,7 @@ function stepOptions(opts: Expr[], video: VideoConfig, firstFrame: boolean) {
           holdSet = true;
         }
         else if (k === 'duration') duration = num(x);
-        else if (k === 'ease' || k === 'easing') easeName = easings[str(x)] ? str(x) : fail(`unknown easing '${str(x)}'`, e.pos);
+        else if (k === 'ease' || k === 'easing') easeName = easing(str(x)) ? str(x) : fail(`unknown easing '${str(x)}'`, e.pos);
         else if (k === 'direction')
           style.direction = (DIRECTIONS as string[]).includes(str(x)) ? (str(x) as Direction) : fail(`unknown direction '${str(x)}' (${DIRECTIONS.join(', ')})`, e.pos);
         else if (k === 'shape')
@@ -486,12 +492,12 @@ function stepOptions(opts: Expr[], video: VideoConfig, firstFrame: boolean) {
         else if (k === 'target') style.target = str(x);
         else fail(`unknown step option '${k}' (hold, duration, ease, direction, shape, target)`, e.pos);
       }
-    } else fail(`unknown step option '${str(v)}'. Use a duration, an easing (${Object.keys(easings).join(', ')}), a transition (${TRANSITIONS.join('|')}), or hold: <dur>`, e.pos);
+    } else fail(`unknown step option '${str(v)}'. Use a duration, an easing (${Object.keys(easings).join(', ')}, cubic-bezier(x1, y1, x2, y2)), a transition (${TRANSITIONS.join('|')}), or hold: <dur>`, e.pos);
   }
   if (style.direction && kind !== 'wipe' && kind !== 'slide' && kind !== 'push') fail(`'direction' is for wipe, slide and push transitions`, opts[0]?.pos);
   if (style.shape && kind !== 'iris') fail(`'shape' is for iris transitions`, opts[0]?.pos);
   if (style.target && kind !== 'zoom-in' && kind !== 'zoom-out') fail(`'target' is for zoom-in and zoom-out transitions`, opts[0]?.pos);
-  return { duration, ease: easings[easeName], easeName, kind, style, hold, holdSet };
+  return { duration, ease: easing(easeName)!, easeName, kind, style, hold, holdSet };
 }
 
 function evalWith(e: Expr, pos: Pos): Value {

@@ -31,6 +31,8 @@ step "append" (800ms, ease-out) {
 | `say "text" [(voice options)]` | Narration over the current picture (see [Narration](#narration-tts)). |
 | `note "text"` | Speaker notes (inside frames and steps, alias `notes`): shown in the speaker view, never on the slide. See [Presenting](#presenting). |
 | `voice { speaker: ..., ... }` | Change the default voice from here on. |
+| `effect name { 0% { ... } 100% { ... } }` | A keyframed enter/exit effect (any position in the file). See [Custom effects and actions](#custom-effects-and-actions). |
+| `action name { 0% { ... } 100% { ... } }` | A keyframed emphasis method every widget gets: `w.name()`. |
 
 Each `frame`/`step` becomes a chapter in the player, named by its string, and
 is followed by an automatic pause (`hold`).
@@ -55,7 +57,9 @@ is followed by an automatic pause (`hold`).
 Write the options in parentheses, in any order: `step "x" (1s, back-out, fade, hold: 2s)`.
 
 - **duration**: `500ms`, `1.2s`. A bare duration also works: `step 1s { ... }`.
-- **easing**: `linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out`, `back-out`, `back-in-out`, `spring`, `bounce`, `step`.
+- **easing**: `linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out`, `back-out`, `back-in-out`, `spring`, `bounce`, `step`,
+  `sine-in`, `sine-out`, `sine-in-out`, or a CSS-style curve `cubic-bezier(x1, y1, x2, y2)` (x1 and x2 within 0..1;
+  y values outside 0..1 overshoot), e.g. `step (600ms, cubic-bezier(0.2, 0.8, 0.2, 1)) { ... }`.
 - **kind**: `morph` (default: keyed interpolation), `fade` (crossfade the whole picture), `cut` (no animation),
   or a slide transition of the whole picture:
   - `wipe`: a moving edge reveals the next picture. `direction:` where the edge goes (default `right`).
@@ -180,7 +184,7 @@ the screen.
 | `at`, `origin` | position, see above |
 | `opacity` | 0..1 (`w.hide()` / `w.show()` are shortcuts) |
 | `z` | stacking order (higher is on top; cursors default to 100) |
-| `enter`, `exit` | effect when parts appear/disappear: `fade`, `pop`, `draw`, `slide-up`, `slide-down`, `slide-left`, `slide-right`, `none` |
+| `enter`, `exit` | effect when parts appear/disappear: `fade`, `pop`, `draw`, `slide-up`, `slide-down`, `slide-left`, `slide-right`, `none`, or one of the script's [`effect`s](#custom-effects-and-actions) |
 | `group` | the [`group`](#group) the widget belongs to: it moves, scales, turns, fades and leaves with it |
 | `link` | while presenting, clicking it jumps to that frame or step (by name, with that slide's transition), or opens a URL: `link: "Storage"`, `link: "https://..."` |
 | `minZoom`, `maxZoom` | shown only while the camera zoom is at least / at most this (details that appear as you zoom in, labels that only the overview needs). Changing zoom fades them. |
@@ -308,6 +312,55 @@ end where they started (like Keynote's "action builds"):
 step { arr.highlight(1, bad); arr.shake() }
 step { result.tada(); badge.pulse() }
 ```
+
+Scripts can add their own with an [`action` block](#custom-effects-and-actions).
+
+## Custom effects and actions
+
+Enter/exit effects and emphasis actions are keyframes, like CSS `@keyframes`
+or Lottie's transform tracks. Define your own at the top level of the file
+(anywhere: they apply to the whole script):
+
+```kino
+effect rise {
+  0%   { opacity: 0, y: 40, scale: 0.9, ease: cubic-bezier(0.2, 0.8, 0.2, 1) }
+  100% { opacity: 1, y: 0, scale: 1 }
+}
+
+action nod {
+  0%   { rotate: 0, ease: sine-out }
+  30%  { rotate: -12, ease: sine-in-out }
+  70%  { rotate: 8, ease: sine-in }
+  100% { rotate: 0 }
+}
+
+frame { card: box at center() { text: "Hello", enter: rise, exit: rise } }
+step { card.nod() }
+```
+
+- **`effect`**: an `enter`/`exit` effect. The keyframes run from `0%` (not shown
+  yet) to `100%` (the widget at rest), and an exit plays them backwards. Make
+  `100%` the rest state (`opacity: 1`, no offset, `scale: 1`, `rotate: 0`) so
+  the widget ends up where it belongs.
+- **`action`**: a method every widget gets (`card.nod()`). It plays over the
+  step that calls it, from `0%` to `100%`, and should start and end at rest.
+- **Properties**: `opacity` (multiplies the widget's own), `x`, `y` (offset in
+  px), `scale`, `scaleX`, `scaleY` (multiply `scale`), `rotate` (degrees).
+  Scale and rotation turn around the center: each part's center for effects,
+  the widget's for actions.
+- **Tracks**: every property is its own track. A property missing from a keyframe
+  is interpolated between the keyframes that do set it, holds its first value
+  before them and its last one after, and is at rest if no keyframe sets it.
+- **`ease`** on a keyframe eases the segments that leave it (towards the next
+  keyframe of each property); the default is `linear`. Any step easing works,
+  including `cubic-bezier(...)`. With keyframes at a wave's peaks and zeros,
+  `sine-out` (zero to peak), `sine-in` (peak to zero) and `sine-in-out` (peak
+  to peak) follow a sine exactly.
+- The built-in `fade`, `pop`, `slide-*` effects and every built-in action are
+  keyframes too (see `BUILTIN_SOURCE` in `src/core/effects.ts`). A script can
+  redefine them, e.g. a softer `pop` for the whole deck. `draw`, `grow`, `none`
+  and the particle effects are drawn in code and can't be redefined; an action
+  can't be called `hide`, `show` or `moveTo`.
 
 ## Camera
 
@@ -627,7 +680,8 @@ item      = "video" props
           | ("frame" | "step" | "transition") [ STRING ] [ DURATION ] [ "(" opts ")" ] body
           | "wait" DURATION
           | "say" STRING [ "(" opts ")" ]
-          | "voice" props ;
+          | "voice" props
+          | ("effect" | "action") IDENT "{" { PERCENT props } "}" ;
 opts      = opt { "," opt } ;            opt = expr | IDENT ":" expr ;
 body      = "{" { stmt [";"] } "}" ;
 stmt      = IDENT ":" IDENT [ "at" expr ] [ props ]          (* declaration *)
@@ -637,6 +691,7 @@ stmt      = IDENT ":" IDENT [ "at" expr ] [ props ]          (* declaration *)
           | "say" STRING [ "(" opts ")" ] | ("note" | "notes") STRING ;
 path      = IDENT { "." IDENT | "[" expr "]" } ;
 props     = "{" { (IDENT | STRING) ":" expr [ "," | ";" ] } "}" ;
+PERCENT   = NUMBER "%" ;                (* keyframe position: 0% .. 100% *)
 expr      = NUMBER | DURATION | STRING | COLOR | "true" | "false" | "_" | "null"
           | "[" args "]" | props | "(" args ")" | IDENT "(" args ")" | path ;
 ```

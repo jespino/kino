@@ -734,5 +734,43 @@ test('combine: invalid options produce DSL errors', () => {
   ] as const) assert.throws(() => compile(combineScene + `\nstep { out.combine("+", a, b, ${opts}) }`), message);
 });
 
+test('effect and action blocks: keyframed enter effects and emphasis methods', () => {
+  const src = `video { transition: 1000ms, easing: linear, hold: 0ms }
+effect rise { 0% { opacity: 0, y: 100 } 50% { opacity: 1, ease: cubic-bezier(0.2, 0.8, 0.2, 1) } 100% { y: 0 } }
+action nod { 0% { rotate: 0, ease: sine-in-out } 50% { rotate: 20 } 100% { rotate: 0 } }
+frame { a: box at (100, 100) { text: "A" } }
+step { b: box at (400, 100) { text: "B", enter: rise } }
+step { a.nod() }`;
+  const m = compile(src);
+  // halfway through the enter: fully visible, still on its way up
+  const mid = m.svgAt(m.beats[1].start + 500);
+  assert.match(mid, /translate\(0 [1-9][\d.]*\)/);
+  // the action pivots around the widget and is gone once the step ends
+  assert.match(m.svgAt(m.beats[2].start + 500), /rotate\(20\)/);
+  assert.doesNotMatch(m.svgAt(m.duration), /rotate\(/);
+  // custom actions show up as effects on the timeline
+  assert.ok(m.timeline.elements.some((e) => e.marks.some((k) => k.kind === 'effect' && k.label === 'nod()')));
+});
+
+test('effect blocks override built-ins; bad ones are errors with lines', () => {
+  const pop = compile('effect pop { 0% { opacity: 0 } 100% { opacity: 1 } }\nframe { a: box }\nstep (1s, linear) { b: box at (300, 0) { enter: pop } }');
+  assert.doesNotMatch(pop.svgAt(pop.beats[1].start + 300), /scale\(/);
+  assert.match(errorAt('effect draw { 0% { opacity: 0 } }').message, /drawn in code/);
+  assert.match(errorAt('action hide { 0% { x: 0 } }').message, /widget method/);
+  assert.match(errorAt('effect e {\n  0% { wobble: 1 }\n}').message, /unknown keyframe property 'wobble'/);
+  assert.equal(errorAt('effect e {\n  0% { wobble: 1 }\n}').pos?.line, 2);
+  assert.match(errorAt('effect e { 0% { x: 0, ease: zoomy } }').message, /unknown easing/);
+  assert.match(errorAt('effect e { 0% { x: 0 } 0% { x: 1 } }').message, /defined twice/);
+  assert.match(errorAt('effect e { 150% { x: 0 } }').message, /0% to 100%/);
+  assert.match(errorAt('effect e { opacity: 0 }').message, /expected a keyframe/);
+});
+
+test('cubic-bezier and sine easings for steps', () => {
+  const m = compile('frame { a: box at (0, 0) }\nstep (1000ms, cubic-bezier(0, 0, 1, 1)) { a.at = (1000, 0) }');
+  assert.equal(m.beats[1].ease, 'cubic-bezier(0, 0, 1, 1)');
+  compile('video { easing: sine-in-out }\nframe { a: box }\nstep (ease: cubic-bezier(0.2, 0.8, 0.2, 1)) { a.at = (10, 10) }');
+  assert.match(errorAt('frame { a: box }\nstep (cubic-bezier(2, 0, 1, 1)) { a.at = (1, 1) }').message, /x1 and x2 within 0..1/);
+});
+
 console.log(failures ? `\n${failures} failing` : '\nall passed');
 process.exit(failures ? 1 : 0);

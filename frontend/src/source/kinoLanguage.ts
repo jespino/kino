@@ -2,7 +2,7 @@
 import { StreamLanguage } from '@codemirror/language';
 import { tags as t } from '@lezer/highlight';
 
-const KEYWORDS = /^(video|frame|step|then|wait|say|note|voice|remove|at)\b/;
+const KEYWORDS = /^(video|frame|step|then|wait|say|note|voice|remove|at|effect|action)\b/;
 const ATOMS = /^(true|false|null|morph|fade|cut)\b/;
 
 export const kinoLanguage = StreamLanguage.define<{ inRaw: boolean; declType: boolean }>({
@@ -29,7 +29,7 @@ export const kinoLanguage = StreamLanguage.define<{ inRaw: boolean; declType: bo
     }
     if (stream.match(/^"(?:[^"\\]|\\.)*"?/)) return 'string';
     if (stream.match(/^#[0-9a-fA-F]{3,8}\b/)) return 'atom';
-    if (stream.match(/^-?(?:\d+\.?\d*|\.\d+)(?:ms|s|f)?\b/)) return 'number';
+    if (stream.match(/^-?(?:\d+\.?\d*|\.\d+)(?:%|(?:ms|s|f)?\b)/)) return 'number';
     if (stream.match(KEYWORDS)) return 'keyword';
     if (stream.match(ATOMS)) return 'atom';
     // `name: type [at ...] {` declarations start a line: the name is a definition, the type a type name

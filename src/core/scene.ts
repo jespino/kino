@@ -2,6 +2,7 @@ import { KinoError, type Pos, type Stmt } from '../dsl/ast.ts';
 import { evaluate, isObj, isRef, num, str, type Value } from './values.ts';
 import type { Props, WidgetCtx } from './widget.ts';
 import type { WidgetRegistry } from '../widgets/index.ts';
+import { BUILTIN_EFFECTS } from './effects.ts';
 
 export interface Instance {
   name: string;
@@ -24,15 +25,16 @@ export interface SceneState {
 /** Props every widget understands, handled by the engine. */
 export const COMMON_DEFAULTS: Props = { at: null, origin: 'top-left', opacity: 1, z: 0, enter: 'fade', exit: 'fade', action: null, group: null, link: null, minZoom: 0, maxZoom: null, panel: null, panelGlow: false, panelColor: 'caption' };
 
-/** emphasis methods every widget has: they play during the step that calls them */
-export const EMPHASIS = ['bounce', 'shake', 'pulse', 'spin', 'wiggle', 'tada', 'jump'];
+/** built-in emphasis methods every widget has: they play during the step that calls them (scripts can add `action`s) */
+export const EMPHASIS = Object.keys(BUILTIN_EFFECTS.actions);
 
 export const emptyState = (): SceneState => ({ widgets: [], camera: { center: null, zoom: 1 } });
 
 export class SceneBuilder {
   private idSeq = 0;
 
-  constructor(private registry: WidgetRegistry) {}
+  /** `actions`: the emphasis methods (the built-ins plus the script's `action` blocks) */
+  constructor(private registry: WidgetRegistry, private actions: string[] = EMPHASIS) {}
 
   /** Apply statements to a (mutable) state. */
   apply(state: SceneState, stmts: Stmt[]) {
@@ -166,11 +168,11 @@ export class SceneBuilder {
         w.props.at = args[0];
         return;
     }
-    if (EMPHASIS.includes(method)) {
+    if (this.actions.includes(method)) {
       w.props.action = { name: method, n: (w.props.action?.n ?? 0) + 1 };
       return;
     }
-    const known = [...Object.keys(def.methods ?? {}), 'hide', 'show', 'moveTo', ...EMPHASIS];
+    const known = [...Object.keys(def.methods ?? {}), 'hide', 'show', 'moveTo', ...this.actions];
     throw new KinoError(`'${w.type}' has no method '${method}'. Available: ${known.join(', ')}`, pos);
   }
 

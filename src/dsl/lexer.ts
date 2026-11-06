@@ -1,6 +1,6 @@
 import { KinoError, type Pos } from './ast.ts';
 
-export type TokType = 'ident' | 'num' | 'dur' | 'str' | 'color' | 'punct' | 'eof';
+export type TokType = 'ident' | 'num' | 'dur' | 'pct' | 'str' | 'color' | 'punct' | 'eof';
 
 export interface Token {
   type: TokType;
@@ -75,9 +75,12 @@ export function tokenize(src: string): Token[] {
 
     // Numbers, optionally negative, optionally with a duration unit.
     if (/[0-9]/.test(c) || (c === '-' && /[0-9.]/.test(src[i + 1] ?? '') && /[0-9]/.test(src[i + 1] === '.' ? src[i + 2] ?? '' : src[i + 1]))) {
-      const m = /^-?(?:\d+\.?\d*|\.\d+)(ms|s)?/.exec(src.slice(i))!;
+      const m = /^-?(?:\d+\.?\d*|\.\d+)(ms|s|%)?/.exec(src.slice(i))!;
       const n = parseFloat(m[0]);
-      if (m[1]) {
+      if (m[1] === '%') {
+        // keyframe positions: 0% .. 100%
+        out.push({ type: 'pct', value: m[0], num: n / 100, pos: start });
+      } else if (m[1]) {
         out.push({ type: 'dur', value: m[0], num: m[1] === 's' ? n * 1000 : n, pos: start });
       } else {
         out.push({ type: 'num', value: m[0], num: n, pos: start });
