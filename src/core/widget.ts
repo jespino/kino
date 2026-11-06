@@ -42,6 +42,10 @@ export interface RNode {
   track?: string;
   /** travel vector for the `burst` / `float` enter effects */
   fly?: [number, number];
+  /** the widget that drew it; set by the engine */
+  owner?: string;
+  /** item it belongs to, for a widget's `stagger` (default: the id in keys like `bg:n3`, or the key) */
+  part?: string | number;
 }
 
 export type Props = Record<string, any>;

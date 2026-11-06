@@ -71,6 +71,8 @@ Write the options in parentheses, in any order: `step "x" (1s, back-out, fade, h
   - `zoom-out`: the way back. The current slide shrinks into `target:` (a widget of the next slide)
     while the camera pulls back to show it.
 - `hold: <dur>`: the pause after the step.
+- `stagger: <dur>`: each statement starts this much after the one before (morph transitions only). See
+  [Stagger](#stagger).
 
 ```kino
 frame "Results" (wipe, 800ms) { ... }
@@ -185,6 +187,8 @@ the screen.
 | `opacity` | 0..1 (`w.hide()` / `w.show()` are shortcuts) |
 | `z` | stacking order (higher is on top; cursors default to 100) |
 | `enter`, `exit` | effect when parts appear/disappear: `fade`, `pop`, `draw`, `slide-up`, `slide-down`, `slide-left`, `slide-right`, `none`, or one of the script's [`effect`s](#custom-effects-and-actions) |
+| `stagger` | `60ms`: the widget's new parts (cells, items, rows, lines) enter one after another. See [Stagger](#stagger) |
+| `trim` | show only part of the widget's lines: `0.5` (the first half), `[start, end]` or `[start, end, offset]`, as fractions of the length. Animates. See [Trim](#trim) |
 | `group` | the [`group`](#group) the widget belongs to: it moves, scales, turns, fades and leaves with it |
 | `link` | while presenting, clicking it jumps to that frame or step (by name, with that slide's transition), or opens a URL: `link: "Storage"`, `link: "https://..."` |
 | `minZoom`, `maxZoom` | shown only while the camera zoom is at least / at most this (details that appear as you zoom in, labels that only the overview needs). Changing zoom fades them. |
@@ -314,6 +318,56 @@ step { result.tada(); badge.pulse() }
 ```
 
 Scripts can add their own with an [`action` block](#custom-effects-and-actions).
+
+## Stagger
+
+Statements in a step normally animate together. `stagger` spreads them out,
+like start offsets on a timeline:
+
+```kino
+step (500ms, stagger: 150ms) {
+  a.highlight(0, good)     // starts at 0ms
+  b.highlight(0, good)     // starts at 150ms
+  c.highlight(0, good)     // starts at 300ms; the step lasts 800ms
+}
+```
+
+- Each statement animates over the step's duration, starting `stagger` after the
+  previous one, so the step lasts `duration + (statements - 1) × stagger`.
+- A widget follows the first statement in the step that changes it. Widgets no
+  statement changes follow the widgets they point at (arrows, pointers,
+  `at below(x)`), so they stay attached. The camera moves over the whole step.
+- `then` still splits a step into sub-steps; `stagger` applies inside each.
+
+The `stagger` prop of a widget does the same for its own parts: new cells,
+items, rows, bars or code lines enter one after another, in order.
+
+```kino
+frame (600ms) { nums: array at center() { values: [5, 2, 8, 1, 9], stagger: 80ms } }
+step { nums.push(4) }   // one new part: no stagger
+```
+
+It only staggers parts that are new in that transition, and adds to the step's
+stagger. A first frame has no transition unless you give it a duration.
+
+## Trim
+
+`trim` shows only a stretch of a widget's lines (arrows, braces, tree edges,
+chart lines), like Lottie's trim paths: `[start, end, offset]` as fractions of
+each line's length. Arrow heads stay on the end of the visible stretch. Change
+it in a step to animate it:
+
+```kino
+frame { req: client -> server { trim: 0 } }
+step { req.trim = 1 }                     // the arrow grows towards the server
+step { req.trim = [0.7, 1] }              // only its last 30% is left
+step { req.trim = [0, 0.2, 0.8] }         // a 20% stretch that has travelled 80% of the way
+```
+
+- A single number is the end: `trim: 0.5` = `[0, 0.5]`.
+- `offset` moves the stretch along the line and wraps around at the end, so
+  tweening it from 0 to 1 sends a pulse along an arrow.
+- Trimmed lines lose their own dash pattern (`dashed: true`).
 
 ## Custom effects and actions
 

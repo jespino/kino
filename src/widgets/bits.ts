@@ -193,9 +193,9 @@ export const bits = defineWidget({
     for (const g of Object.values(p.groups as Record<string, Group>)) for (let i = g.lo; i <= g.hi; i++) groupOf.set(i, rc.color(g.color, 'accent'));
     for (let k = 0; k < G.w; k++) {
       const c = G.slot(k);
-      nodes.push(h.rect(`s${k}`, c.x, c.y, c.w, c.h, { rx: 6, fill: rc.theme.surface2, stroke: rc.theme.border, 'stroke-width': 1.5 }));
+      nodes.push(h.rect(`s${k}`, c.x, c.y, c.w, c.h, { rx: 6, fill: rc.theme.surface2, stroke: rc.theme.border, 'stroke-width': 1.5 }, { part: k }));
       if (p.indices)
-        nodes.push(h.text(`i${k}`, c.x + c.w / 2, c.y + c.h + s * 0.8, String(G.w - 1 - k), { 'font-size': s * 0.5, 'font-family': rc.theme.fontMono, 'text-anchor': 'middle', fill: rc.theme.muted }));
+        nodes.push(h.text(`i${k}`, c.x + c.w / 2, c.y + c.h + s * 0.8, String(G.w - 1 - k), { 'font-size': s * 0.5, 'font-family': rc.theme.fontMono, 'text-anchor': 'middle', fill: rc.theme.muted }, { part: k }));
     }
     items.forEach((it, k) => {
       const c = G.slot(k);
@@ -203,13 +203,13 @@ export const bits = defineWidget({
       const hl = p.hl[idx] ? rc.color(p.hl[idx], 'highlight') : null;
       const tint = hl ?? groupOf.get(idx) ?? rc.theme.accent;
       nodes.push(
-        glowRect(`g:${it.id}`, c.x, c.y, c.w, c.h, 6, hl ?? rc.theme.glow, hl ? 0.85 : 0),
+        { ...glowRect(`g:${it.id}`, c.x, c.y, c.w, c.h, 6, hl ?? rc.theme.glow, hl ? 0.85 : 0), part: k },
         h.rect(`b:${it.id}`, c.x, c.y, c.w, c.h, {
           rx: 6, fill: it.b ? fillTint(rc.theme, tint, 0.3) : rc.theme.surface, stroke: hl ?? groupOf.get(idx) ?? rc.theme.border, 'stroke-width': hl ? 2 : 1.5,
-        }, { enter: 'pop' }),
+        }, { enter: 'pop', part: k }),
         h.text(`t:${it.id}`, c.x + c.w / 2, midBaseline(c.y, c.h, s), String(it.b), {
           'font-size': s, 'font-family': rc.theme.fontMono, 'font-weight': it.b ? 700 : 400, 'text-anchor': 'middle', fill: it.b ? rc.theme.fg : rc.theme.muted,
-        }, { enter: 'pop' }),
+        }, { enter: 'pop', part: k }),
       );
       // bits that changed in this step flash once
       if (changed.has(it.id)) nodes.push(h.rect(`fl${p.flash}:${it.id}`, c.x, c.y, c.w, c.h, { rx: 6, fill: rc.theme.accent, opacity: 0.55 }, { transient: true, enter: 'flash' }));

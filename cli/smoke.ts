@@ -772,5 +772,57 @@ test('cubic-bezier and sine easings for steps', () => {
   assert.match(errorAt('frame { a: box }\nstep (cubic-bezier(2, 0, 1, 1)) { a.at = (1, 1) }').message, /x1 and x2 within 0..1/);
 });
 
+test('step stagger: statements start one after another, arrows follow what they point at', () => {
+  const src = `video { hold: 0ms, easing: linear }
+frame { a: box at (0, 0) { text: "a" }; b: box at (0, 200) { text: "b" }; ab: a -> b }
+step (400ms, stagger: 300ms) { a.at = (400, 0); b.at = (400, 200) }`;
+  const m = compile(src);
+  const beat = m.beats[1];
+  assert.equal(beat.end - beat.start, 700);
+  const x = (t: number, owner: string) => Number(m.frameAt(t).nodes.find((n) => n.owner === owner && n.tag === 'rect')!.attrs.x);
+  const x0 = x(0, 'a');
+  // a is halfway when b hasn't started; both arrive at the end
+  assert.ok(Math.abs(x(beat.start + 200, 'a') - (x0 + 200)) < 1);
+  assert.equal(x(beat.start + 200, 'b'), x(0, 'b'));
+  assert.ok(Math.abs(x(beat.start + 500, 'b') - (x(0, 'b') + 200)) < 1);
+  // the arrow points at b too, so it moves on b's clock
+  const arrow = (t: number) => m.frameAt(t).nodes.find((n) => n.owner === 'ab' && n.tag === 'path')!.attrs.d;
+  assert.equal(arrow(beat.start + 200), arrow(0));
+  assert.match(errorAt('frame { a: box }\nstep (fade, stagger: 80ms) { a.at = (1, 1) }').message, /'stagger' is for morph/);
+});
+
+test('widget stagger: new parts enter one after another', () => {
+  const m = compile('video { hold: 0ms, easing: linear }\nframe (400ms) { arr: array { values: [1, 2, 3, 4], stagger: 100ms } }');
+  const beat = m.beats[0];
+  assert.equal(beat.end - beat.start, 700);
+  const shown = (t: number, v: string) => m.frameAt(t).nodes.some((n) => n.tag === 'text' && n.text === v && Number(n.attrs.opacity ?? 1) > 0.05);
+  assert.ok(shown(beat.start + 150, '1'));
+  assert.ok(!shown(beat.start + 150, '4'));
+  assert.ok(shown(beat.end, '4'));
+  // only new parts: pushing one later is a normal transition
+  const m2 = compile('video { hold: 0ms }\nframe { arr: array { values: [1, 2], stagger: 100ms } }\nstep (400ms) { arr.push(3) }');
+  assert.equal(m2.beats[1].end - m2.beats[1].start, 400);
+});
+
+test('trim: part of a stroke shows, the head rides its end, and it tweens', () => {
+  const src = `video { hold: 0ms, easing: linear, transition: 1000ms }
+frame { a: box at (0, 0) { text: "a" }; b: box at (600, 0) { text: "b" }; ab: a -> b { trim: [0, 0.25], glow: false, enter: fade } }
+step { ab.trim = [0, 1] }
+step { ab.trim = [0, 0.2, 0.9] }`;
+  const m = compile(src);
+  const dash = (t: number) => /<path [^>]*stroke-dasharray="([\d.]+) ([\d.]+)(?: ([\d.]+) ([\d.]+))?"/.exec(m.svgAt(t));
+  const first = dash(m.beats[0].end)!;
+  const half = dash(m.beats[1].start + 500)!;
+  assert.ok(+half[1] > +first[1] * 2.4 && +half[1] < +first[1] * 2.6, `${first[1]} -> ${half[1]}`);
+  // fully shown: no dashes at all, head where it always is
+  assert.equal(dash(m.beats[1].end), null);
+  assert.doesNotMatch(m.svgAt(m.beats[1].end), /rotate\(/);
+  // trimmed: the head is moved back along the line
+  assert.match(m.svgAt(m.beats[0].end), /translate\(-[\d.]+ [-\d.]+\) rotate\(/);
+  // an offset past the end wraps around: two dashes
+  assert.ok(dash(m.beats[2].end)?.[4], 'wrapped dash pattern');
+  assert.match(errorAt('frame { a: box; b: box at (300, 0); ab: a -> b { trim: [1, 2, 3, 4] } }').message, /'trim' takes/);
+});
+
 console.log(failures ? `\n${failures} failing` : '\nall passed');
 process.exit(failures ? 1 : 0);

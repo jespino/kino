@@ -132,18 +132,18 @@ export const memory = defineWidget({
     for (let r = 0; r < G.rows && p.addresses; r++) {
       const c = G.cell(r * G.cols);
       const addr = '0x' + (num(p.base) + r * G.cols).toString(16).toUpperCase().padStart(p.addrDigits, '0');
-      nodes.push(h.text(`a${r}`, 0, midBaseline(c.y, c.h, s * 0.8), addr, { 'font-size': s * 0.8, 'font-family': rc.theme.fontMono, fill: rc.theme.muted }));
+      nodes.push(h.text(`a${r}`, 0, midBaseline(c.y, c.h, s * 0.8), addr, { 'font-size': s * 0.8, 'font-family': rc.theme.fontMono, fill: rc.theme.muted }, { part: r * G.cols }));
     }
     const recent = new Set<number>(p.recent);
     (p.bytes as number[]).forEach((b, i) => {
       const c = G.cell(i);
       const hl = p.hl[i] ? rc.color(p.hl[i], 'highlight') : null;
       nodes.push(
-        glowRect(`g${i}`, c.x, c.y, c.w, c.h, 7, hl ?? rc.theme.glow, hl ? 0.85 : 0),
-        h.rect(`c${i}`, c.x, c.y, c.w, c.h, { rx: 7, fill: hl ? fillTint(rc.theme, hl, 0.16) : rc.theme.surface, stroke: hl ?? rc.theme.border, 'stroke-width': 1.5 }),
+        { ...glowRect(`g${i}`, c.x, c.y, c.w, c.h, 7, hl ?? rc.theme.glow, hl ? 0.85 : 0), part: i },
+        h.rect(`c${i}`, c.x, c.y, c.w, c.h, { rx: 7, fill: hl ? fillTint(rc.theme, hl, 0.16) : rc.theme.surface, stroke: hl ?? rc.theme.border, 'stroke-width': 1.5 }, { part: i }),
         h.text(`v${i}`, c.x + c.w / 2, midBaseline(c.y, c.h, s), hex2(b), {
           'font-size': s, 'font-family': rc.theme.fontMono, 'font-weight': b ? 700 : 400, 'text-anchor': 'middle', fill: b || hl ? rc.theme.fg : rc.theme.muted,
-        }),
+        }, { part: i }),
       );
       // bytes written in this step flash once
       if (recent.has(i)) nodes.push(h.rect(`fl${p.flash}:${i}`, c.x, c.y, c.w, c.h, { rx: 7, fill: rc.theme.accent, opacity: 0.55 }, { transient: true, enter: 'flash' }));

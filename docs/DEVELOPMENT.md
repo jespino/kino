@@ -154,10 +154,22 @@ and scripts add to or override them. `effect()` and `emphasize()` in
 effects (`pour`, `burst`, `float`) are still drawn in code, because they use
 per-node data (paths, travel vectors) or change geometry.
 
+Staggering (`src/core/stagger.ts`) gives nodes start offsets inside one morph
+transition: the step's `stagger` offsets the widgets each statement changes
+(found by applying statements one at a time and diffing), and a widget's
+`stagger` offsets its new parts, grouped by `part` (or the id in keys like
+`bg:n3`). The segment carries the offsets and `interpolate` gives every node
+its own progress. Trim paths (`src/core/trim.ts`) travel as a `trim` node
+attribute that tweens like any number string and becomes a dash pattern in
+`frameToSVG`, before themes draw; nodes with a `track` (arrow heads) ride its
+end instead.
+
 Node extras: `enter`/`exit` effects, `origin` (start from another node's
 state), `transient` (only visible while appearing, used for click ripples),
 `delay` (0..1 fraction of the transition to wait before entering, for
-staggered entrances like the `title` card).
+staggered entrances like the `title` card), `part` (the item a node belongs to, for the
+widget `stagger` prop: set it when a cell is drawn with keys that don't share
+an id, like the array's `slot3` and `@item:n7`).
 
 ## Prior art and what Kino borrows
 
@@ -171,7 +183,7 @@ nearest tools each cover only part of it:
 | [D2](https://d2lang.com/), [Mermaid](https://mermaid.js.org/) | text → static diagrams | the declaration syntax: `name: type { ... }` and `a -> b` connections |
 | Keynote Magic Move, [reveal.js auto-animate](https://revealjs.com/auto-animate/), [Shiki Magic Move](https://github.com/shikijs/shiki-magic-move) | animate between two slides by matching elements | **the core animation model**: keyed morphing between states |
 | CSS transitions and `@keyframes` | | durations (`600ms`), easing names (`ease-in-out`), `cubic-bezier()`, the `0% { ... } 100% { ... }` keyframe syntax |
-| [Lottie](https://lottiefiles.github.io/lottie-docs/) | JSON export of After Effects animations | effects as **keyframed transform tracks** (opacity, position, scale, rotation around an anchor), one track per property, eased per segment |
+| [Lottie](https://lottiefiles.github.io/lottie-docs/) | JSON export of After Effects animations | effects as **keyframed transform tracks** (opacity, position, scale, rotation around an anchor), one track per property, eased per segment; per-layer start offsets (**stagger**); **trim paths** |
 
 Manim and Motion Canvas are programming libraries: you write code that drives
 the animation. Kino is declarative. You describe **states** and the engine works
@@ -183,7 +195,7 @@ with an LLM.
 - Text metrics cover Latin text in the bundled fonts. Other scripts and emoji
   fall back to system fonts and estimated widths.
 - Numbers crossfade rather than count up. Per-statement timing within a step
-  is limited to `then` (no stagger or overlap offsets yet).
+  is `then` and `stagger`; there are no arbitrary per-statement offsets yet.
 - There's no background music track yet.
 - The studio's timeline is for reading and navigating: dragging a transition
   to change its duration isn't supported yet. The source editor has

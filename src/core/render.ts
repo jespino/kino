@@ -7,6 +7,7 @@ import { emojiDataUri, type EmojiProvider } from './emoji.ts';
 import type { ImageProvider } from './image.ts';
 import { isCall, isPoint, isRef, num, str, type Value } from './values.ts';
 import type { RenderCtx, RNode } from './widget.ts';
+import { trimAttr, trimmable } from './trim.ts';
 import type { SceneState, Instance } from './scene.ts';
 import type { WidgetRegistry } from '../widgets/index.ts';
 
@@ -112,10 +113,20 @@ class Layout {
       const op = chain.reduce((o, x) => o * (x.props.opacity ?? 1) * (shown(x) ? 1 : 0), 1);
       // `link`: clicking it while presenting jumps to that frame or step (or opens the URL)
       const link = chain.find((x) => x.props.link !== null && x.props.link !== undefined && x.props.link !== '')?.props.link;
+      // `trim`: only part of each stroke shows
+      let trim: string | undefined;
+      if (w.props.trim !== null && w.props.trim !== undefined) {
+        try {
+          trim = trimAttr(w.props.trim);
+        } catch (e) {
+          throw new KinoError(`${w.name}: ${e instanceof Error ? e.message : e}`);
+        }
+      }
       for (const n of p.nodes) {
         const node: RNode = {
           ...n,
           key: n.key.startsWith('@') ? n.key : `${w.name}/${n.key}`,
+          owner: w.name,
           enter: n.enter ?? w.props.enter,
           exit: n.exit ?? w.props.exit,
           // decorations (ribbons, particles) stay put while the widget itself bounces or shakes
@@ -123,6 +134,7 @@ class Layout {
         };
         if (op !== 1) node.attrs = { ...node.attrs, opacity: num(node.attrs.opacity ?? 1) * op };
         if (link !== undefined && !n.decor) node.attrs = { ...node.attrs, 'data-link': str(link) };
+        if (trim !== undefined && trimmable(n)) node.attrs = { ...node.attrs, trim };
         nodes.push(node);
       }
     }

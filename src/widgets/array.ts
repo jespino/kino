@@ -276,22 +276,22 @@ export const array = defineWidget({
           'stroke-width': 1.5,
           'stroke-dasharray': used ? '1 0' : '5 5',
           opacity: used ? 1 : 0.7,
-        }),
+        }, { part: i }),
       );
       if (p.indices) {
-        const at = vertical
+        const at: RNode = vertical
           ? h.text(`idx${i}`, r.x - 10, midBaseline(r.y, r.h, p.size * 0.55), String(i), idxAttrs(rc, p.size, 'end'))
           : h.text(`idx${i}`, r.x + r.w / 2, r.y + r.h + p.size * 0.85, String(i), idxAttrs(rc, p.size, 'middle'));
-        nodes.push(at);
+        nodes.push({ ...at, part: i });
       }
     }
     items.forEach((it, i) => {
       const r = cell(i);
       const hl = it.hl ? rc.color(it.hl, 'highlight') : null;
       const isNull = it.v === null || it.v === '';
-      const from = (k: string) => ({ origin: it.from && `${k}${it.from}`, enter: 'pop' });
+      const from = (k: string) => ({ origin: it.from && `${k}${it.from}`, enter: 'pop', part: i });
       nodes.push(
-        glowRect(`@iglow:${it.id}`, r.x, r.y, r.w, r.h, 8, hl ?? rc.theme.glow, hl ? 0.9 : 0),
+        { ...glowRect(`@iglow:${it.id}`, r.x, r.y, r.w, r.h, 8, hl ?? rc.theme.glow, hl ? 0.9 : 0), part: i },
         h.rect(`@ibg:${it.id}`, r.x, r.y, r.w, r.h, {
           rx: 8, fill: hl ? fillTint(rc.theme, hl, 0.18) : rc.theme.surface, stroke: hl ?? rc.theme.border, 'stroke-width': 1.5, opacity: isNull && !hl ? 0 : 1,
         }, from('@ibg:')),

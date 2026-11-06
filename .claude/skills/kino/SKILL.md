@@ -152,6 +152,8 @@ in the speaker view, never on the slide. Write them for live talks.
 
 **Emphasis methods on every widget** play during their step: `bounce() jump() shake() pulse() spin() wiggle() tada()`.
 
+**Stagger and trim**: step option `stagger: 150ms` starts each statement of the step 150ms after the previous one (morph only; the step lasts duration + (n-1)×stagger; untouched arrows/pointers follow what they point at). Widget prop `stagger: 80ms` makes its new parts (cells, items, rows, code lines) enter one by one. Widget prop `trim: [start, end, offset]` (fractions; a number = end) shows part of its lines (arrows, braces, edges), heads riding the visible end; `step { req.trim = 1 }` grows an arrow, tweening `offset` 0→1 on a short stretch sends a pulse along it.
+
 **Custom effects and actions** (top level, keyframes like CSS `@keyframes`): `effect rise { 0% { opacity: 0, y: 40, ease: cubic-bezier(0.2, 0.8, 0.2, 1) } 100% { opacity: 1, y: 0 } }` makes `enter: rise` / `exit: rise` (0% = hidden, 100% = at rest; exits play backwards); `action nod { 0% { rotate: 0 } 50% { rotate: 15 } 100% { rotate: 0 } }` gives every widget `w.nod()` (start and end at rest). Properties: `opacity`, `x`, `y`, `scale`, `scaleX`, `scaleY`, `rotate` (degrees, around the center), and `ease` for the segment leaving that keyframe (default linear). Redefining a built-in (`pop`, `fade`, `slide-*`, `bounce`...) changes it for the whole script.
 
 | Widget | Key props | Methods / assignment | Anchors |

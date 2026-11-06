@@ -13,6 +13,7 @@ import type { WidgetDef } from './widget.ts';
 import type { EmojiProvider } from './emoji.ts';
 import type { ImageProvider } from './image.ts';
 import { TimelineRecorder, type Timeline } from './timeline.ts';
+import { changedWidgets, nodeOffsets, widgetOffsets } from './stagger.ts';
 import { applyVoice, estimateDuration, spokenText, narrationRequest, sayVoice, videoVoice, type NarrationLookup, type NarrationRequest, type ProjectVoice } from './narration.ts';
 
 export interface VideoConfig {
@@ -53,6 +54,8 @@ interface Segment {
   kind: TransitionKind;
   style?: TransitionStyle;
   hold: boolean;
+  /** staggered transitions: each node animates over `span` ms from its own start offset */
+  clock?: { span: number; offsets: Map<string, number> };
 }
 
 export interface Chapter {
@@ -235,7 +238,8 @@ export class Movie {
     const s = segs[lo];
     if (s.hold) return still(s.to);
     const p = Math.min(1, Math.max(0, (t - s.start) / (s.end - s.start)));
-    return interpolate(s.from, s.to, s.ease(p), s.kind, s.style, Math.max(0, t - s.start), this.effects);
+    const elapsed = Math.max(0, t - s.start);
+    return interpolate(s.from, s.to, s.ease(p), s.kind, s.style, elapsed, this.effects, s.clock && { ...s.clock, elapsed, ease: s.ease });
   }
 
   /** `extraDefs` is inserted into <defs> verbatim (the browser exporter embeds fonts this way). */
@@ -340,7 +344,16 @@ export function compile(src: string, opts: CompileOptions = {}): Movie {
     for (const [gi, g] of groups.entries()) {
       // narration starts together with its (sub)step
       for (const s of g) if (s.t === 'say') spokenUntil = Math.max(spokenUntil, say(s));
-      builder.apply(next, g.filter((s) => s.t !== 'say' && s.t !== 'note'));
+      const stmts = g.filter((s) => s.t !== 'say' && s.t !== 'note');
+      /** stagger: the first statement that changes each widget */
+      const first = new Map<string, number>();
+      if (o.stagger > 0) {
+        stmts.forEach((s, i) => {
+          const before = structuredClone(next);
+          builder.apply(next, [s]);
+          for (const name of changedWidgets(before, next)) if (!first.has(name)) first.set(name, i);
+        });
+      } else builder.apply(next, stmts);
       const snapshot = structuredClone(next);
       const target = build(snapshot, item.pos);
       if (o.style.target && !zoomTargets.has(o.style.target)) zoomTargets.set(o.style.target, item.pos);
@@ -351,8 +364,9 @@ export function compile(src: string, opts: CompileOptions = {}): Movie {
       }
       // Timed effects only extend the transition that creates them, never later steps.
       const existing = new Set(current.nodes.map((n) => n.key));
+      const offsets = o.kind === 'morph' && o.duration > 0 ? nodeOffsets(current, target, snapshot, widgetOffsets(snapshot, first, o.stagger)) : new Map<string, number>();
       const d = o.kind === 'morph' && o.duration > 0
-        ? Math.max(o.duration, ...target.nodes.filter((n) => !existing.has(n.key)).map((n) => n.timing?.duration ?? 0))
+        ? Math.max(o.duration + Math.max(0, ...offsets.values()), ...target.nodes.filter((n) => !existing.has(n.key)).map((n) => (n.timing?.duration ?? 0) + (offsets.get(n.key) ?? 0)))
         : Math.max(0, o.duration);
       beats.push({
         start: t,
@@ -369,7 +383,7 @@ export function compile(src: string, opts: CompileOptions = {}): Movie {
       step.transitions.push({ start: t, end: t + d, kind: o.kind, ease: o.easeName, line: groupLines[gi] });
       rec.group(g, t, d, snapshot.widgets);
       if (d > 0) {
-        segments.push({ start: t, end: t + d, from: current, to: target, ease: o.ease, kind: o.kind, style: o.style, hold: false });
+        segments.push({ start: t, end: t + d, from: current, to: target, ease: o.ease, kind: o.kind, style: o.style, hold: false, clock: offsets.size ? { span: o.duration, offsets } : undefined });
         t += d;
       }
       current = target;
@@ -466,6 +480,7 @@ function stepOptions(opts: Expr[], video: VideoConfig, firstFrame: boolean) {
   let kind: TransitionKind = 'morph';
   let hold = video.hold;
   let holdSet = false;
+  let stagger = 0;
   const style: TransitionStyle = {};
   for (const e of opts) {
     const v = evalWith(e, e.pos);
@@ -490,14 +505,18 @@ function stepOptions(opts: Expr[], video: VideoConfig, firstFrame: boolean) {
         else if (k === 'shape')
           style.shape = (IRIS_SHAPES as string[]).includes(str(x)) ? (str(x) as IrisShape) : fail(`unknown iris shape '${str(x)}' (${IRIS_SHAPES.join(', ')})`, e.pos);
         else if (k === 'target') style.target = str(x);
-        else fail(`unknown step option '${k}' (hold, duration, ease, direction, shape, target)`, e.pos);
+        else if (k === 'stagger') {
+          stagger = num(x);
+          if (!(stagger >= 0)) fail(`'stagger' must be a duration like 80ms`, e.pos);
+        } else fail(`unknown step option '${k}' (hold, duration, ease, direction, shape, target, stagger)`, e.pos);
       }
     } else fail(`unknown step option '${str(v)}'. Use a duration, an easing (${Object.keys(easings).join(', ')}, cubic-bezier(x1, y1, x2, y2)), a transition (${TRANSITIONS.join('|')}), or hold: <dur>`, e.pos);
   }
   if (style.direction && kind !== 'wipe' && kind !== 'slide' && kind !== 'push') fail(`'direction' is for wipe, slide and push transitions`, opts[0]?.pos);
   if (style.shape && kind !== 'iris') fail(`'shape' is for iris transitions`, opts[0]?.pos);
   if (style.target && kind !== 'zoom-in' && kind !== 'zoom-out') fail(`'target' is for zoom-in and zoom-out transitions`, opts[0]?.pos);
-  return { duration, ease: easing(easeName)!, easeName, kind, style, hold, holdSet };
+  if (stagger > 0 && kind !== 'morph') fail(`'stagger' is for morph transitions`, opts[0]?.pos);
+  return { duration, ease: easing(easeName)!, easeName, kind, style, hold, holdSet, stagger };
 }
 
 function evalWith(e: Expr, pos: Pos): Value {

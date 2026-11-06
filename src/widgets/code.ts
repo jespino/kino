@@ -113,7 +113,7 @@ export const code = defineWidget({
         nodes.push(
           h.text(`ln${i}`, L.pad + L.gutter - L.s * 1.2, baseline, String(i + 1), {
             'font-size': L.s, 'font-family': codeFont(rc), 'text-anchor': 'end', fill: hl.includes(i + 1) ? rc.theme.fg : rc.theme.codeComment, opacity,
-          }),
+          }, { part: `line${i}` }),
         );
       }
       let x = L.pad + L.gutter;
@@ -122,7 +122,7 @@ export const code = defineWidget({
           nodes.push(
             h.text(`${key}#${k}`, x, baseline, t.text, {
               'font-size': L.s, 'font-family': codeFont(rc), fill: rc.color(TOKEN_COLOR[t.kind], 'codeText'), opacity, 'xml:space': 'preserve',
-            }),
+            }, { part: `line${i}` }),
           );
         x += rc.measure(t.text, L.s, true, 400, 0, codeFont(rc));
       });

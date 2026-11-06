@@ -23,7 +23,7 @@ export interface SceneState {
 }
 
 /** Props every widget understands, handled by the engine. */
-export const COMMON_DEFAULTS: Props = { at: null, origin: 'top-left', opacity: 1, z: 0, enter: 'fade', exit: 'fade', action: null, group: null, link: null, minZoom: 0, maxZoom: null, panel: null, panelGlow: false, panelColor: 'caption' };
+export const COMMON_DEFAULTS: Props = { at: null, origin: 'top-left', opacity: 1, z: 0, enter: 'fade', exit: 'fade', action: null, group: null, link: null, minZoom: 0, maxZoom: null, panel: null, panelGlow: false, panelColor: 'caption', stagger: 0, trim: null };
 
 /** built-in emphasis methods every widget has: they play during the step that calls them (scripts can add `action`s) */
 export const EMPHASIS = Object.keys(BUILTIN_EFFECTS.actions);

@@ -5,6 +5,7 @@ import { sketchNode } from './sketch.ts';
 import { comicNode } from './comic.ts';
 import { pixelNode } from './pixel.ts';
 import { paperNode } from './papercut.ts';
+import { applyTrim } from './trim.ts';
 import { GRAIN_PNG, GRAIN_SIZE } from './grain.ts';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -98,11 +99,14 @@ export function frameToSVG(frame: Frame, width: number, height: number, backgrou
   if (edge > 0 && theme.edgeLeft) parts.push(`<rect x="${fmt(v.x - 1)}" y="${fmt(v.y - 1)}" width="${fmt(edge + 1)}" height="${fmt(v.h + 2)}" fill="url(#kedgeL)"/>`);
   if (edge > 0 && theme.edgeRight) parts.push(`<rect x="${fmt(v.x + v.w - edge)}" y="${fmt(v.y - 1)}" width="${fmt(edge + 1)}" height="${fmt(v.h + 2)}" fill="url(#kedgeR)"/>`);
   const clips = frame.clips ?? [];
-  frame.nodes.forEach((node, i) => {
+  frame.nodes.forEach((raw, i) => {
     // whole-picture transitions: each picture is drawn clipped to its part of the screen
     clips.forEach((c) => c.to === i && c.to > c.from && parts.push('</g>'));
     clips.forEach((c, k) => c.from === i && c.to > c.from && parts.push(`<g clip-path="url(#kclip${k})">`));
-    if (Number(node.attrs.opacity ?? 1) <= 0.001) return;
+    if (Number(raw.attrs.opacity ?? 1) <= 0.001) return;
+    // trim paths: only part of a stroke shows (Lottie's trim start/end/offset)
+    const node = applyTrim(raw);
+    if (!node) return;
     // hand-drawn themes redraw shapes as pencil strokes and watercolor washes, comic ones ink them,
     // pixel ones put them on a low-res grid, paper-cut ones lay them on the page as paper
     for (const n of sketchNode(node, theme).flatMap((s) => comicNode(s, theme)).flatMap((s) => pixelNode(s, theme)).flatMap((s) => paperNode(s, theme))) {

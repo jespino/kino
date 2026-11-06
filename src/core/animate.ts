@@ -1,4 +1,5 @@
-import { easing, easings } from './easing.ts';
+import { easing, easings, type Ease } from './easing.ts';
+import { NO_TRIM } from './trim.ts';
 import { applyKeyframes, BUILTIN_EFFECTS, lookup, type Effects, type KeyframeEffect } from './effects.ts';
 import { lerpColor } from './color.ts';
 import { center, lerpPath, pathLength, pointAlong, rect, transformPoint } from './geometry.ts';
@@ -35,7 +36,18 @@ export function still(f: Frame): Frame {
  * matched nodes tween their attributes, new ones play their enter effect,
  * vanished ones play their exit effect.
  */
-export function interpolate(A: Frame, B: Frame, p: number, kind: TransitionKind, style: TransitionStyle = {}, elapsed?: number, fx: Effects = BUILTIN_EFFECTS): Frame {
+/**
+ * A staggered transition: node `key` animates over `span` ms starting
+ * `offsets.get(key)` ms in (0 if missing), eased on its own.
+ */
+export interface StaggerClock {
+  elapsed: number;
+  span: number;
+  ease: Ease;
+  offsets: Map<string, number>;
+}
+
+export function interpolate(A: Frame, B: Frame, p: number, kind: TransitionKind, style: TransitionStyle = {}, elapsed?: number, fx: Effects = BUILTIN_EFFECTS, clock?: StaggerClock): Frame {
   if (kind === 'wipe' || kind === 'iris' || kind === 'slide' || kind === 'push') return reveal(A, B, p, kind, style);
   // Prezi-like: fly into a part of the slide, which opens up into the next one (and back out)
   if (kind === 'zoom-in') return zoom(A, B, p, style.target ? A.boxes?.[style.target] : undefined, B.view);
@@ -51,6 +63,9 @@ export function interpolate(A: Frame, B: Frame, p: number, kind: TransitionKind,
   }
 
   const aMap = new Map(aNodes.map((n) => [n.key, n]));
+  // staggered: every node's own progress and local clock
+  const pAt = (key: string) => clock ? clock.ease(Math.max(0, Math.min(1, (clock.elapsed - (clock.offsets.get(key) ?? 0)) / clock.span))) : p;
+  const msAt = (key: string, total: number) => clock ? Math.max(0, clock.elapsed - (clock.offsets.get(key) ?? 0)) : elapsed ?? p * total;
   const aTransient = new Set(A.nodes.filter((n) => n.transient).map((n) => n.key));
   const bKeys = new Set(B.nodes.map((n) => n.key));
   // exiting nodes are drawn right after the last surviving node that preceded them
@@ -66,29 +81,30 @@ export function interpolate(A: Frame, B: Frame, p: number, kind: TransitionKind,
 
   const out: RNode[] = [];
   const flushExits = (k: string) => {
-    for (const a of exitAfter.get(k) ?? []) push(out, effect(a, a.exit ?? 'fade', 1 - p, fx));
+    for (const a of exitAfter.get(k) ?? []) push(out, effect(a, a.exit ?? 'fade', 1 - pAt(a.key), fx));
   };
   flushExits('');
   for (const b of B.nodes) {
     const a = aMap.get(b.key);
+    const pb = pAt(b.key);
     if (b.transient) {
       // only on the step that creates it
-      if (!aTransient.has(b.key) && (b.timing ? (elapsed ?? p * b.timing.duration) < b.timing.duration : p < 1)) {
-        if (b.timing) out.push(...timed(b, b.origin ? aMap.get(b.origin) : undefined, elapsed ?? p * b.timing.duration, fx));
-        else if (b.leave === undefined) push(out, effect(b, b.enter ?? 'fade', p, fx));
-        else out.push(...staged(b, b.origin ? aMap.get(b.origin) : undefined, p, fx));
+      if (!aTransient.has(b.key) && (b.timing ? msAt(b.key, b.timing.duration) < b.timing.duration : pb < 1)) {
+        if (b.timing) out.push(...timed(b, b.origin ? aMap.get(b.origin) : undefined, msAt(b.key, b.timing.duration), fx));
+        else if (b.leave === undefined) push(out, effect(b, b.enter ?? 'fade', pb, fx));
+        else out.push(...staged(b, b.origin ? aMap.get(b.origin) : undefined, pb, fx));
       }
       continue;
     }
     if (a) {
-      tween(out, a, b, p, fx);
+      tween(out, a, b, pb, fx);
       flushExits(b.key);
       continue;
     }
     const src = b.origin ? aMap.get(b.origin) : undefined;
-    if (b.timing) out.push(...timed(b, src, elapsed ?? p * b.timing.duration, fx));
-    else if (src && src.tag === b.tag) tween(out, { ...src, key: b.key }, b, p, fx);
-    else push(out, effect(b, b.enter ?? 'fade', b.delay ? Math.max(0, Math.min(1, (p - b.delay) / (1 - b.delay))) : p, fx));
+    if (b.timing) out.push(...timed(b, src, msAt(b.key, b.timing.duration), fx));
+    else if (src && src.tag === b.tag) tween(out, { ...src, key: b.key }, b, pb, fx);
+    else push(out, effect(b, b.enter ?? 'fade', b.delay ? Math.max(0, Math.min(1, (pb - b.delay) / (1 - b.delay))) : pb, fx));
   }
   return { view, nodes: out };
 }
@@ -242,8 +258,8 @@ function tween(out: RNode[], a: RNode, b: RNode, p: number, fx: Effects) {
   }
   const attrs: Record<string, string | number> = {};
   for (const k of new Set([...Object.keys(a.attrs), ...Object.keys(b.attrs)])) {
-    const av = a.attrs[k] ?? (k === 'opacity' ? 1 : undefined);
-    const bv = b.attrs[k] ?? (k === 'opacity' ? 1 : undefined);
+    const av = a.attrs[k] ?? (k === 'opacity' ? 1 : k === 'trim' ? NO_TRIM : undefined);
+    const bv = b.attrs[k] ?? (k === 'opacity' ? 1 : k === 'trim' ? NO_TRIM : undefined);
     attrs[k] = mix(k, av, bv, p);
   }
   if (a.tag === 'text' && a.text !== b.text) {
@@ -331,6 +347,13 @@ export function effect(n: RNode, name: string, q: number, fx: Effects = BUILTIN_
       break;
     }
     case 'draw': {
+      if (n.attrs.trim !== undefined) {
+        // trimmed strokes draw in by growing their visible stretch (heads follow its end)
+        const [s = 0, e = 1, o = 0] = String(n.attrs.trim).split(/\s+/).map(Number);
+        attrs.trim = `${s} ${s + (e - s) * q} ${o}`;
+        if (n.track) attrs.opacity = op * Math.min(1, q * 6);
+        break;
+      }
       if (n.track) {
         // arrowheads: ride the tip of the line being drawn, turning with it
         const at = pointAlong(n.track, q), end = pointAlong(n.track, 1);

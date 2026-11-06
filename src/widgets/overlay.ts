@@ -50,7 +50,7 @@ export const arrow = defineWidget({
       const ux = (tip.x - from.x) / d, uy = (tip.y - from.y) / d;
       const bx = tip.x - ux * head, by = tip.y - uy * head;
       nodes.push(
-        h.path(key, `M${tip.x} ${tip.y} L${bx - uy * head * 0.5} ${by + ux * head * 0.5} L${bx + uy * head * 0.5} ${by - ux * head * 0.5} Z`, { fill: color }, track && p.enter === 'draw' ? { enter: 'draw', track } : { enter: 'fade' }),
+        h.path(key, `M${tip.x} ${tip.y} L${bx - uy * head * 0.5} ${by + ux * head * 0.5} L${bx + uy * head * 0.5} ${by - ux * head * 0.5} Z`, { fill: color }, track ? { enter: p.enter === 'draw' ? 'draw' : 'fade', track } : { enter: 'fade' }),
       );
     };
     if (p.head !== 'none') tri(b, { x: cx, y: cy }, 'head', line);
