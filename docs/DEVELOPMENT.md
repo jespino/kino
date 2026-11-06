@@ -164,6 +164,14 @@ attribute that tweens like any number string and becomes a dash pattern in
 `frameToSVG`, before themes draw; nodes with a `track` (arrow heads) ride its
 end instead.
 
+Masks (`src/core/mask.ts`) travel as a `clip` node attribute: a path in the
+node's own coordinates (the widget's mask, worked out on the canvas, is mapped
+through the inverse of each node's transform), so effects that move or scale a
+node take its mask along. Shapes use only M/L/C/Z so they map exactly and tween
+with `lerpPath`. `frameToSVG` turns each shape into a `<clipPath>` named after
+it (pages with several pictures can't mix them up) and puts `clip-path` on every
+part a theme draws for the node.
+
 Node extras: `enter`/`exit` effects, `origin` (start from another node's
 state), `transient` (only visible while appearing, used for click ripples),
 `delay` (0..1 fraction of the transition to wait before entering, for
@@ -183,7 +191,7 @@ nearest tools each cover only part of it:
 | [D2](https://d2lang.com/), [Mermaid](https://mermaid.js.org/) | text → static diagrams | the declaration syntax: `name: type { ... }` and `a -> b` connections |
 | Keynote Magic Move, [reveal.js auto-animate](https://revealjs.com/auto-animate/), [Shiki Magic Move](https://github.com/shikijs/shiki-magic-move) | animate between two slides by matching elements | **the core animation model**: keyed morphing between states |
 | CSS transitions and `@keyframes` | | durations (`600ms`), easing names (`ease-in-out`), `cubic-bezier()`, the `0% { ... } 100% { ... }` keyframe syntax |
-| [Lottie](https://lottiefiles.github.io/lottie-docs/) | JSON export of After Effects animations | effects as **keyframed transform tracks** (opacity, position, scale, rotation around an anchor), one track per property, eased per segment; per-layer start offsets (**stagger**); **trim paths** |
+| [Lottie](https://lottiefiles.github.io/lottie-docs/) | JSON export of After Effects animations | effects as **keyframed transform tracks** (opacity, position, scale, rotation around an anchor), one track per property, eased per segment; per-layer start offsets (**stagger**); **trim paths**; **masks** and track mattes |
 
 Manim and Motion Canvas are programming libraries: you write code that drives
 the animation. Kino is declarative. You describe **states** and the engine works
@@ -200,4 +208,3 @@ with an LLM.
 - The studio's timeline is for reading and navigating: dragging a transition
   to change its duration isn't supported yet. The source editor has
   highlighting but no completion.
-- Images can't have rounded corners or masks.

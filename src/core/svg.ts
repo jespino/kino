@@ -1,7 +1,7 @@
 import { fmt } from './geometry.ts';
 import type { Frame } from './render.ts';
 import type { Theme } from './theme.ts';
-import { sketchNode } from './sketch.ts';
+import { hash, sketchNode } from './sketch.ts';
 import { comicNode } from './comic.ts';
 import { pixelNode } from './pixel.ts';
 import { paperNode } from './papercut.ts';
@@ -99,18 +99,29 @@ export function frameToSVG(frame: Frame, width: number, height: number, backgrou
   if (edge > 0 && theme.edgeLeft) parts.push(`<rect x="${fmt(v.x - 1)}" y="${fmt(v.y - 1)}" width="${fmt(edge + 1)}" height="${fmt(v.h + 2)}" fill="url(#kedgeL)"/>`);
   if (edge > 0 && theme.edgeRight) parts.push(`<rect x="${fmt(v.x + v.w - edge)}" y="${fmt(v.y - 1)}" width="${fmt(edge + 1)}" height="${fmt(v.h + 2)}" fill="url(#kedgeR)"/>`);
   const clips = frame.clips ?? [];
+  /** masks (`clip` node attribute): one clipPath per shape */
+  const masks = new Map<string, string>();
   frame.nodes.forEach((raw, i) => {
     // whole-picture transitions: each picture is drawn clipped to its part of the screen
     clips.forEach((c) => c.to === i && c.to > c.from && parts.push('</g>'));
     clips.forEach((c, k) => c.from === i && c.to > c.from && parts.push(`<g clip-path="url(#kclip${k})">`));
     if (Number(raw.attrs.opacity ?? 1) <= 0.001) return;
     // trim paths: only part of a stroke shows (Lottie's trim start/end/offset)
-    const node = applyTrim(raw);
-    if (!node) return;
+    const trimmed = applyTrim(raw);
+    if (!trimmed) return;
+    // masks: the shape is in the node's own coordinates, so it goes on the element itself (and every part a theme draws for it)
+    let node = trimmed, mask: string | undefined;
+    if (typeof trimmed.attrs.clip === 'string') {
+      const { clip, ...rest } = trimmed.attrs;
+      // named after the shape: several pictures on one page (the speaker view) can't pick up each other's masks
+      if (!masks.has(clip as string)) masks.set(clip as string, `kmask${(hash(clip as string) >>> 0).toString(36)}`);
+      mask = `url(#${masks.get(clip as string)})`;
+      node = { ...trimmed, attrs: rest };
+    }
     // hand-drawn themes redraw shapes as pencil strokes and watercolor washes, comic ones ink them,
     // pixel ones put them on a low-res grid, paper-cut ones lay them on the page as paper
     for (const n of sketchNode(node, theme).flatMap((s) => comicNode(s, theme)).flatMap((s) => pixelNode(s, theme)).flatMap((s) => paperNode(s, theme))) {
-      let attrs = '';
+      let attrs = mask ? ` clip-path="${mask}"` : '';
       for (const [k, val] of Object.entries(n.attrs)) {
         attrs += ` ${k}="${typeof val === 'number' ? fmt(val) : esc(val)}"`;
       }
@@ -118,6 +129,7 @@ export function frameToSVG(frame: Frame, width: number, height: number, backgrou
     }
   });
   clips.forEach((c) => c.to === frame.nodes.length && c.to > c.from && parts.push('</g>'));
+  if (masks.size) parts.push(`<defs>${[...masks].map(([d, id]) => `<clipPath id="${id}"><path d="${esc(d)}" clip-rule="evenodd"/></clipPath>`).join('')}</defs>`);
   // comic panel: a paper gutter around an inked frame, cropping whatever reaches the edges
   const border = (+theme.frameBorder || 0) * px;
   if (border > 0) {

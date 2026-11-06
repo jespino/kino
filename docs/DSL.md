@@ -188,6 +188,8 @@ the screen.
 | `z` | stacking order (higher is on top; cursors default to 100) |
 | `enter`, `exit` | effect when parts appear/disappear: `fade`, `pop`, `draw`, `slide-up`, `slide-down`, `slide-left`, `slide-right`, `none`, or one of the script's [`effect`s](#custom-effects-and-actions) |
 | `stagger` | `60ms`: the widget's new parts (cells, items, rows, lines) enter one after another. See [Stagger](#stagger) |
+| `clip` | a mask: show the widget only inside another widget or part (`clip: viewport`), `inset(top, right, bottom, left)` or `circle(size)`. Animates. See [Masks](#masks) |
+| `clipRadius`, `clipInvert` | round the mask's corners (px); `true`: show only what's *outside* the mask |
 | `trim` | show only part of the widget's lines: `0.5` (the first half), `[start, end]` or `[start, end, offset]`, as fractions of the length. Animates. See [Trim](#trim) |
 | `group` | the [`group`](#group) the widget belongs to: it moves, scales, turns, fades and leaves with it |
 | `link` | while presenting, clicking it jumps to that frame or step (by name, with that slide's transition), or opens a URL: `link: "Storage"`, `link: "https://..."` |
@@ -368,6 +370,36 @@ step { req.trim = [0, 0.2, 0.8] }         // a 20% stretch that has travelled 80
 - `offset` moves the stretch along the line and wraps around at the end, so
   tweening it from 0 to 1 sends a pulse along an arrow.
 - Trimmed lines lose their own dash pattern (`dashed: true`).
+
+## Masks
+
+`clip` shows a widget only inside a shape, like Lottie's masks and track
+mattes. The shape tweens when you change it in a step, so it's also how you
+reveal one widget without touching the rest of the slide.
+
+```kino
+frame {
+  win: box at (640, 40) { width: 260, height: 140 }
+  feed: list at (660, 60) { items: ["one", "two", "three", "four", "five"], clip: win, clipRadius: 12 }
+  nums: array at (60, 420) { values: [1, 2, 3, 4], clip: inset(0, 1, 0, 0) }
+  src: code at (640, 400) { code: "print(42)", clip: circle(0) }
+}
+step { feed.at = (660, -40) }                    // scrolls inside the window
+step { nums.clip = inset(0); src.clip = circle(1) }   // a wipe and an iris, just for these two
+```
+
+- **A widget or part** (`clip: win`, `clip: arr[2]`): its box. The mask follows
+  it when it moves.
+- **`inset(top, right, bottom, left)`**: the widget's own box cut in from each
+  side, as fractions of its size (`inset(0, 1, 0, 0)` hides it all from the
+  right). One to four values, like CSS: `inset(0.2)` is every side.
+- **`circle(size)`**: a circle at the widget's center; `1` just covers its box.
+- `clipRadius: 12` rounds the corners of box and inset masks; `clipInvert: true`
+  keeps what's outside the shape instead (a hole).
+- On a [`group`](#group), the mask applies to all its members.
+- The mask moves with the widget's effects: a `pop` or a `pulse()` scales it too.
+- Masks of the same kind tween (inset to inset, box to box, circle to circle);
+  switching kinds swaps halfway. `w.clip = null` removes the mask at the end of its step.
 
 ## Custom effects and actions
 
@@ -586,7 +618,7 @@ A picture from a file or a URL: PNG, JPEG, GIF, WebP or SVG. Paths are relative
 to the `.kino` file (the CLI also tries the working directory; the studio looks
 in the project folder, the one holding the script). The picture is embedded in the frames, so
 previews, exported MP4s and CLI renders all match.
-- Props: `src`, `width`, `height` (give one and the other follows the aspect ratio; neither = natural size), `fit` (`contain`|`cover`|`fill`, when both are given), `border` (`true` or a color), `padding` (a mat around the picture, like a mounted photo), `rotate` (degrees), `label` (caption below), `labelSize`, `glow`.
+- Props: `src`, `width`, `height` (give one and the other follows the aspect ratio; neither = natural size), `fit` (`contain`|`cover`|`fill`, when both are given), `radius` (rounded corners; a big value makes a square picture a circle, `fit: cover` fills it), `border` (`true` or a color), `padding` (a mat around the picture, like a mounted photo), `rotate` (degrees), `label` (caption below), `labelSize`, `glow`.
 - Assigning `src` (or `img.set("other.png")`) crossfades to another picture.
 - A picture that can't be loaded is drawn as a dashed placeholder with its path; `check` and `render` print why.
 

@@ -1,5 +1,6 @@
 import { defineWidget, glowRect, h, type RNode } from '../core/widget.ts';
 import { bool, num, str } from '../core/values.ts';
+import { roundedRectPath } from '../core/mask.ts';
 
 const FIT: Record<string, string> = { contain: 'xMidYMid meet', cover: 'xMidYMid slice', fill: 'none' };
 
@@ -13,8 +14,8 @@ export const image = defineWidget({
   type: 'image',
   description:
     'Picture from a file (relative to the .kino file) or URL: PNG, JPEG, GIF, WebP, SVG. Props: src, width, height ' +
-    '(one is enough), fit (contain|cover|fill), border (true or color), padding (mat around it), rotate (deg), label, glow',
-  defaults: { src: '', width: 0, height: 0, fit: 'contain', border: false, padding: 0, rotate: 0, label: '', labelSize: 0, glow: false, enter: 'fade', exit: 'fade' } as Record<string, any>,
+    '(one is enough), fit (contain|cover|fill), radius (rounded corners; large = circle/pill), border (true or color), padding (mat around it), rotate (deg), label, glow',
+  defaults: { src: '', width: 0, height: 0, fit: 'contain', radius: 0, border: false, padding: 0, rotate: 0, label: '', labelSize: 0, glow: false, enter: 'fade', exit: 'fade' } as Record<string, any>,
   methods: {
     set(p, [src]) {
       p.src = str(src);
@@ -35,21 +36,26 @@ export const image = defineWidget({
     const transform = `rotate(${num(p.rotate)} ${cx} ${cy})`;
     const nodes: RNode[] = [];
     const framed = bool(p.border) || pad > 0;
-    if (bool(p.glow)) nodes.push(glowRect('glow', 0, 0, W, H, 6, rc.color(p.glow === true ? 'glow' : p.glow, 'glow'), 0.9));
+    // rounded corners: the picture is clipped (the frame and the glow follow)
+    const radius = Math.max(0, num(p.radius));
+    const round = radius > 0 ? Math.min(radius, w / 2, hgt / 2) : 0;
+    if (bool(p.glow)) nodes.push(glowRect('glow', 0, 0, W, H, round ? round + pad : 6, rc.color(p.glow === true ? 'glow' : p.glow, 'glow'), 0.9));
     if (framed)
       nodes.push(
         h.rect('frame', 0, 0, W, H, {
-          rx: 4, fill: pad > 0 ? rc.theme.surface : 'none',
+          rx: round ? round + pad : 4, fill: pad > 0 ? rc.theme.surface : 'none',
           stroke: bool(p.border) ? rc.color(p.border === true ? 'border' : p.border, 'border') : 'none', 'stroke-width': 1.5, transform,
         }),
       );
     if (asset) {
       // the key includes the source, so a new picture crossfades with the old one
-      nodes.push(h.image(`img:${src}`, pad, pad, w, hgt, asset.uri, { preserveAspectRatio: FIT[str(p.fit)] ?? FIT.contain, transform }));
+      nodes.push(h.image(`img:${src}`, pad, pad, w, hgt, asset.uri, {
+        preserveAspectRatio: FIT[str(p.fit)] ?? FIT.contain, transform, clip: round ? roundedRectPath(pad, pad, w, hgt, round) : undefined,
+      }));
     } else {
       // not loaded (yet), or missing: a placeholder that says what's expected
       nodes.push(
-        h.rect('missing', pad, pad, w, hgt, { rx: 6, fill: rc.theme.surface2, stroke: rc.theme.muted, 'stroke-width': 1.5, 'stroke-dasharray': '6 6', transform }),
+        h.rect('missing', pad, pad, w, hgt, { rx: round || 6, fill: rc.theme.surface2, stroke: rc.theme.muted, 'stroke-width': 1.5, 'stroke-dasharray': '6 6', transform }),
         h.text('missingText', cx, cy + 6, src ? `image: ${src}` : 'image (no src)', {
           'font-size': Math.max(12, Math.min(18, w / 18)), 'font-family': rc.theme.fontMono, 'text-anchor': 'middle', fill: rc.theme.muted, transform,
         }),

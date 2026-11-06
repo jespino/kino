@@ -8,6 +8,7 @@ import { twemoji } from '../src/node/emoji.ts';
 import { Resvg } from '@resvg/resvg-js';
 import { PDFDocument } from 'pdf-lib';
 import { buildPdf } from '../src/pdf.ts';
+import { intoNode } from '../src/core/mask.ts';
 
 let failures = 0;
 function test(name: string, fn: () => void) {
@@ -822,6 +823,34 @@ step { ab.trim = [0, 0.2, 0.9] }`;
   // an offset past the end wraps around: two dashes
   assert.ok(dash(m.beats[2].end)?.[4], 'wrapped dash pattern');
   assert.match(errorAt('frame { a: box; b: box at (300, 0); ab: a -> b { trim: [1, 2, 3, 4] } }').message, /'trim' takes/);
+});
+
+test('masks: clip to a widget, inset/circle reveals that tween, inverted, rounded images', () => {
+  const clipD = (svg: string) => /<clipPath id="kmask\w+"><path d="([^"]+)"/.exec(svg)?.[1];
+  const xs = (d: string) => d.match(/-?[\d.]+/g)!.filter((_, i) => i % 2 === 0).map(Number);
+  // track matte: the list shows only inside the box, wherever the box is
+  const m = compile('frame { win: box at (100, 100) { width: 200, height: 100 }\nfeed: list at (110, 110) { items: ["a", "b"], clip: win } }');
+  const svg = m.svgAt(0);
+  assert.match(svg, /<text [^>]*clip-path="url\(#kmask\w+\)"/);
+  assert.deepEqual([Math.min(...xs(clipD(svg)!)), Math.max(...xs(clipD(svg)!))], [100, 300]);
+  // inset reveal: halfway through the step the clip is half as wide
+  const r = compile('video { hold: 0ms, easing: linear }\nframe { a: box at (0, 0) { width: 400, height: 100, clip: inset(0, 1, 0, 0) } }\nstep (1000ms) { a.clip = inset(0) }');
+  const w = (t: number) => { const x = xs(clipD(r.svgAt(t))!); return Math.max(...x) - Math.min(...x); };
+  assert.ok(w(0) < 1);
+  assert.ok(Math.abs(w(r.beats[1].start + 500) - w(r.duration) / 2) < 2, `${w(r.beats[1].start + 500)} of ${w(r.duration)}`);
+  // inverted: everything but the circle (even-odd)
+  const inv = compile('frame { a: box { width: 100, height: 100, clip: circle(0.5), clipInvert: true } }').svgAt(0);
+  assert.match(clipD(inv)!, /^M-100000 -100000/);
+  assert.match(inv, /clip-rule="evenodd"/);
+  // the clip is in each node's own coordinates: a node's transform doesn't move it twice
+  assert.equal(intoNode('M10 0 L20 0', 'translate(10 0)'), 'M0 0 L10 0');
+  assert.equal(intoNode('M0 10 L0 20', 'rotate(90)'), 'M10 0 L20 0');
+  assert.match(errorAt('frame { a: box { clip: inset(1, 2, 3, 4, 5) } }').message, /'clip' takes/);
+  // images: rounded corners
+  const pic = imageAsset(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200"/>'), 'p.svg')!;
+  const img = compile('frame { p: image { src: "p.svg", width: 300, radius: 20 } }', { images: (s) => (s === 'p.svg' ? pic : undefined) }).svgAt(0);
+  assert.match(img, /<image [^>]*clip-path="url\(#kmask\w+\)"/);
+  assert.match(clipD(img)!, / C/);
 });
 
 console.log(failures ? `\n${failures} failing` : '\nall passed');

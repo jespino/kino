@@ -295,7 +295,7 @@ function mix(k: string, a: string | number | undefined, b: string | number | und
   if (typeof a === 'number' && typeof b === 'number') return lerp(a, b, p);
   const as = String(a), bs = String(b);
   if (as === bs) return a;
-  if (k === 'd') return lerpPath(as, bs, p) ?? (p < 0.5 ? a : b);
+  if (k === 'd' || k === 'clip') return lerpPath(as, bs, p) ?? (p < 0.5 ? a : b);
   if (COLOR_ATTRS.has(k)) return lerpColor(as, bs, p) ?? (p < 0.5 ? a : b);
   if (!isNaN(+as) && !isNaN(+bs)) return lerp(+as, +bs, p);
   // strings with the same shape ("translate(1 2) rotate(30)", "6 5", point lists): lerp the numbers

@@ -8,6 +8,7 @@ import type { ImageProvider } from './image.ts';
 import { isCall, isPoint, isRef, num, str, type Value } from './values.ts';
 import type { RenderCtx, RNode } from './widget.ts';
 import { trimAttr, trimmable } from './trim.ts';
+import { clipShape, intoNode } from './mask.ts';
 import type { SceneState, Instance } from './scene.ts';
 import type { WidgetRegistry } from '../widgets/index.ts';
 
@@ -113,6 +114,16 @@ class Layout {
       const op = chain.reduce((o, x) => o * (x.props.opacity ?? 1) * (shown(x) ? 1 : 0), 1);
       // `link`: clicking it while presenting jumps to that frame or step (or opens the URL)
       const link = chain.find((x) => x.props.link !== null && x.props.link !== undefined && x.props.link !== '')?.props.link;
+      // `clip`: a mask (the widget's or its group's), on the canvas, mapped into each node's coordinates below
+      const masker = chain.find((x) => x.props.clip !== null && x.props.clip !== undefined && x.props.clip !== false);
+      let clip: string | undefined;
+      if (masker) {
+        try {
+          clip = clipShape(masker.props.clip, this.place(masker.name).bbox, (v) => this.anchor(v), num(masker.props.clipRadius ?? 0), !!masker.props.clipInvert);
+        } catch (e) {
+          throw new KinoError(`${masker.name}: ${e instanceof Error ? e.message : e}`);
+        }
+      }
       // `trim`: only part of each stroke shows
       let trim: string | undefined;
       if (w.props.trim !== null && w.props.trim !== undefined) {
@@ -135,6 +146,8 @@ class Layout {
         if (op !== 1) node.attrs = { ...node.attrs, opacity: num(node.attrs.opacity ?? 1) * op };
         if (link !== undefined && !n.decor) node.attrs = { ...node.attrs, 'data-link': str(link) };
         if (trim !== undefined && trimmable(n)) node.attrs = { ...node.attrs, trim };
+        // the widget's own clips (an image's rounded corners) are kept; a mask from the props wins
+        if (clip !== undefined) node.attrs = { ...node.attrs, clip: intoNode(clip, node.attrs.transform) };
         nodes.push(node);
       }
     }
@@ -383,6 +396,7 @@ export function translateNode(n: RNode, dx: number, dy: number): RNode {
   for (const k of COORD_X) if (typeof attrs[k] === 'number') attrs[k] = (attrs[k] as number) + dx;
   for (const k of COORD_Y) if (typeof attrs[k] === 'number') attrs[k] = (attrs[k] as number) + dy;
   if (typeof attrs.d === 'string') attrs.d = translatePath(attrs.d, dx, dy);
+  if (typeof attrs.clip === 'string') attrs.clip = translatePath(attrs.clip, dx, dy);
   if (typeof attrs.points === 'string')
     attrs.points = attrs.points.split(/[\s,]+/).filter(Boolean).map((v, i) => +v + (i % 2 ? dy : dx)).join(' ');
   return { ...n, attrs };
